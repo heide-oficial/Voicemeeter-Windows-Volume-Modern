@@ -26,12 +26,19 @@ try
         File.WriteAllText(markerPath, version);
     }
 
-    Process.Start(new ProcessStartInfo
+    var startInfo = new ProcessStartInfo
     {
         FileName = appPath,
         WorkingDirectory = appDirectory,
-        UseShellExecute = true
-    });
+        UseShellExecute = false
+    };
+
+    if (!string.IsNullOrWhiteSpace(Environment.ProcessPath))
+    {
+        startInfo.EnvironmentVariables["VMWV_PORTABLE_LAUNCHER"] = Environment.ProcessPath;
+    }
+
+    Process.Start(startInfo);
 }
 catch (Exception ex)
 {

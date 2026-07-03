@@ -31,7 +31,7 @@ The app is not a replacement for Voicemeeter. It is a companion app that keeps s
 - Adds atomic settings writes, corrupt-settings backup, duplicate-toggle normalization, and polling-bound validation around the old JSON configuration model.
 - Reduces repeated runtime work through coalesced volume/mute events, batched Voicemeeter updates, debounced settings writes, and bounded diagnostic logs.
 - Adds a real Windows 11-style UI while preserving the core workflow of selecting Voicemeeter strips and buses that follow Windows audio state.
-- Replaces the old build/release chain based on webpack, nexe, and NSIS scripts with .NET build projects and release scripts for setup and portable EXE artifacts.
+- Replaces the old build/release chain based on webpack, nexe, and NSIS scripts with .NET build projects, a Windows Installer MSI, and a portable EXE artifact.
 
 ## Bug Fixes
 
@@ -91,7 +91,7 @@ rtk powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Create-ReleaseAr
 Outputs:
 
 - `artifacts\release\VoicemeeterWindowsVolumeModern-Portable-x64.exe`
-- `artifacts\release\VoicemeeterWindowsVolumeModern-Setup-x64.exe`
+- `artifacts\release\VoicemeeterWindowsVolumeModern-Setup-x64.msi`
 
 Generate only the portable EXE:
 
@@ -106,7 +106,7 @@ rtk powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Create-PortableR
 - `native/VMWV.Infrastructure.Windows` - Windows Core Audio and Voicemeeter Remote integrations.
 - `native/VMWV.Core.Tests` - lightweight test runner for critical core behavior.
 - `native/VMWV.Portable` - portable EXE bootstrapper that contains the release app payload.
-- `native/VMWV.Setup` - setup EXE bootstrapper that installs the release app payload per user.
+- `native/VMWV.Installer` - WiX/Windows Installer project that builds the native MSI setup package.
 - `scripts` - release and UI smoke-test scripts.
 
 ## Credits

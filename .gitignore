@@ -14,6 +14,7 @@ screenshots/
 ui-smoke-results.json
 artifacts/
 changelog-*.md
+native/VMWV.Installer/GeneratedFiles.wxs
 /.idea/.gitignore
 /.idea/deployment.xml
 /.idea/git_toolbox_prj.xml

@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using VMWV.Infrastructure.Windows.Audio;
+using VMWV.Infrastructure.Windows.Startup;
 using VMWV.Infrastructure.Windows.Voicemeeter;
 using VMWV_App.ViewModels;
 
@@ -9,12 +10,15 @@ namespace VMWV_App;
 
 public sealed partial class MainPage : Page
 {
+    private static readonly Lazy<MainPageViewModel> SharedViewModel = new(
+        () => new MainPageViewModel(new WindowsAudioEndpointService(), new VoicemeeterRemoteClient(), new WindowsStartupService()));
+    private static bool _sharedViewModelDisposed;
+
     private bool _layoutUpdateQueued;
     private double _lastLayoutWidth = -1;
     private bool? _lastNarrowLayout;
 
-    public MainPageViewModel ViewModel { get; } =
-        new(new WindowsAudioEndpointService(), new VoicemeeterRemoteClient());
+    public MainPageViewModel ViewModel => SharedViewModel.Value;
 
     public MainPage()
     {
@@ -26,15 +30,25 @@ public sealed partial class MainPage : Page
         ShowSection("Dashboard");
     }
 
+    public static async ValueTask DisposeSharedViewModelAsync()
+    {
+        if (!SharedViewModel.IsValueCreated || _sharedViewModelDisposed)
+        {
+            return;
+        }
+
+        _sharedViewModelDisposed = true;
+        await SharedViewModel.Value.DisposeAsync();
+    }
+
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         await ViewModel.InitializeAsync();
         QueueResponsiveLayoutUpdate();
     }
 
-    private async void OnUnloaded(object sender, RoutedEventArgs e)
+    private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        await ViewModel.DisposeAsync();
     }
 
     private void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)

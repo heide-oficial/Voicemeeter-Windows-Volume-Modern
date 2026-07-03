@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix
+  xmlns="http://wixtoolset.org/schemas/v4/wxs"
+  xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package
+    Name="Voicemeeter Windows Volume Modern"
+    Manufacturer="Matheus Heidemann"
+    Version="1.0.0"
+    UpgradeCode="9D2360E1-12F5-4D1B-A506-0CFDA8DE34C0"
+    Scope="perMachine">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Voicemeeter Windows Volume Modern is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon.ico" SourceFile="..\VMWV.App\Assets\AppIcon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+    <Property Id="ApplicationFolderName" Value="Voicemeeter Windows Volume Modern" />
+    <Property Id="WixAppFolder" Value="WixPerMachineFolder" />
+
+    <StandardDirectory Id="ProgramFilesFolder">
+      <Directory Id="INSTALLFOLDER" Name="Voicemeeter Windows Volume Modern" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Voicemeeter Windows Volume Modern" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+    <Component Id="StartMenuShortcutComponent" Directory="ApplicationProgramsFolder" Guid="B5F5A05C-7E4E-450D-B658-B5523D9EA5F0">
+      <Shortcut
+        Id="StartMenuShortcut"
+        Name="Voicemeeter Windows Volume Modern"
+        Description="Launch Voicemeeter Windows Volume Modern"
+        Target="[INSTALLFOLDER]VMWV.App.exe"
+        WorkingDirectory="INSTALLFOLDER"
+        Icon="AppIcon.ico" />
+      <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+      <RegistryValue
+        Root="HKCU"
+        Key="Software\Voicemeeter Windows Volume Modern"
+        Name="StartMenuShortcut"
+        Type="integer"
+        Value="1"
+        KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopShortcutComponent" Directory="DesktopFolder" Guid="34F378F4-2C99-471D-8C2B-5B61D02BFB49">
+      <Shortcut
+        Id="DesktopShortcut"
+        Name="Voicemeeter Windows Volume Modern"
+        Description="Launch Voicemeeter Windows Volume Modern"
+        Target="[INSTALLFOLDER]VMWV.App.exe"
+        WorkingDirectory="INSTALLFOLDER"
+        Icon="AppIcon.ico" />
+      <RegistryValue
+        Root="HKCU"
+        Key="Software\Voicemeeter Windows Volume Modern"
+        Name="DesktopShortcut"
+        Type="integer"
+        Value="1"
+        KeyPath="yes" />
+    </Component>
+
+    <Feature Id="MainFeature" Title="Application files" Level="1" AllowAdvertise="no">
+      <ComponentGroupRef Id="AppFiles" />
+    </Feature>
+
+    <Feature Id="StartMenuShortcutFeature" Title="Start Menu shortcut" Level="1" AllowAdvertise="no">
+      <ComponentRef Id="StartMenuShortcutComponent" />
+    </Feature>
+
+    <Feature Id="DesktopShortcutFeature" Title="Desktop shortcut" Level="1" AllowAdvertise="no">
+      <ComponentRef Id="DesktopShortcutComponent" />
+    </Feature>
+
+    <ui:WixUI Id="WixUI_Advanced" />
+  </Package>
+</Wix>

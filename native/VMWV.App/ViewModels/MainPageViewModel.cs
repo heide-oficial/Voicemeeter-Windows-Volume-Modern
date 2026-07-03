@@ -17,6 +17,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private readonly JsonSettingsStore _settingsStore;
     private readonly IAudioEndpointService _audioEndpointService;
     private readonly IVoicemeeterClient _voicemeeterClient;
+    private readonly IStartupService _startupService;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly SemaphoreSlim _voicemeeterConnectionLock = new(1, 1);
     private readonly object _voicemeeterSyncLock = new();
@@ -35,10 +36,14 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private bool _volumeSyncWorkerRunning;
     private bool _muteSyncWorkerRunning;
 
-    public MainPageViewModel(IAudioEndpointService audioEndpointService, IVoicemeeterClient voicemeeterClient)
+    public MainPageViewModel(
+        IAudioEndpointService audioEndpointService,
+        IVoicemeeterClient voicemeeterClient,
+        IStartupService startupService)
     {
         _audioEndpointService = audioEndpointService;
         _voicemeeterClient = voicemeeterClient;
+        _startupService = startupService;
 
         _settingsStore = new JsonSettingsStore(AppSettingsPaths.DefaultSettingsPath);
         _settings = _settingsStore.LoadOrCreate();
@@ -189,6 +194,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
 
         _isInitialized = true;
+
+        await SyncStartupRegistrationAsync();
 
         try
         {
@@ -365,7 +372,15 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    partial void OnStartWithWindowsChanged(bool value) => SaveBoolean(value, setting => setting.StartWithWindows = value, "Start with Windows");
+    partial void OnStartWithWindowsChanged(bool value)
+    {
+        if (_isLoading)
+        {
+            return;
+        }
+
+        _ = SetStartWithWindowsAsync(value);
+    }
     partial void OnCloseToTrayChanged(bool value)
     {
         SaveBoolean(value, setting => setting.CloseToTray = value, "Close to tray", saveImmediately: true);
@@ -411,6 +426,38 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     partial void OnGainMinChanged(double value) => SaveNumber(setting => setting.GainMin = value, "Minimum gain");
     partial void OnGainMaxChanged(double value) => SaveNumber(setting => setting.GainMax = value, "Maximum gain");
     partial void OnPollingRateChanged(double value) => SaveNumber(setting => setting.PollingRate = (int)Math.Round(value), "Fallback polling");
+
+    private async Task SetStartWithWindowsAsync(bool value)
+    {
+        try
+        {
+            await _startupService.SetEnabledAsync(value, _shutdown.Token);
+            SaveBoolean(value, setting => setting.StartWithWindows = value, "Start with Windows", saveImmediately: true);
+            AddLog("Startup", value ? "Windows startup registration enabled." : "Windows startup registration disabled.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            AddLog("Startup", $"Failed to update Windows startup registration: {ex.Message}");
+            _isLoading = true;
+            StartWithWindows = !value;
+            _isLoading = false;
+        }
+    }
+
+    private async Task SyncStartupRegistrationAsync()
+    {
+        try
+        {
+            await _startupService.SetEnabledAsync(_settings.StartWithWindows, _shutdown.Token);
+            AddLog("Startup", _settings.StartWithWindows
+                ? "Windows startup registration verified."
+                : "Windows startup registration disabled.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            AddLog("Startup", $"Failed to verify Windows startup registration: {ex.Message}");
+        }
+    }
 
     private void LoadFromSettings()
     {

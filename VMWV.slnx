@@ -6,7 +6,7 @@
     <Project Path="native/VMWV.Core.Tests/VMWV.Core.Tests.csproj" />
     <Project Path="native/VMWV.Core/VMWV.Core.csproj" />
     <Project Path="native/VMWV.Infrastructure.Windows/VMWV.Infrastructure.Windows.csproj" />
+    <Project Path="native/VMWV.Installer/VMWV.Installer.wixproj" />
     <Project Path="native/VMWV.Portable/VMWV.Portable.csproj" />
-    <Project Path="native/VMWV.Setup/VMWV.Setup.csproj" />
   </Folder>
 </Solution>

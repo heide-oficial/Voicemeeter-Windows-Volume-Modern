@@ -143,6 +143,7 @@ public sealed partial class MainWindow : Window
         if (_exitRequested)
         {
             RemoveTrayIcon();
+            DisposeSharedServices();
             RestoreWindowProc();
             return;
         }
@@ -150,12 +151,14 @@ public sealed partial class MainWindow : Window
         if (!_closeToTray)
         {
             RemoveTrayIcon();
+            DisposeSharedServices();
             RestoreWindowProc();
             return;
         }
 
         args.Cancel = true;
         AddTrayIcon();
+        UnloadShellContent();
         ShowWindow(_hwnd, SwHide);
     }
 
@@ -166,16 +169,47 @@ public sealed partial class MainWindow : Window
 
     public void RestoreAndActivate()
     {
+        EnsureShellContent();
         ShowWindow(_hwnd, SwShow);
         ShowWindow(_hwnd, SwRestore);
         SetForegroundWindow(_hwnd);
+    }
+
+    private void UnloadShellContent()
+    {
+        if (RootFrame.Content is null)
+        {
+            return;
+        }
+
+        RootFrame.Content = null;
+        RootFrame.BackStack.Clear();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+    }
+
+    private void EnsureShellContent()
+    {
+        if (RootFrame.Content is not null)
+        {
+            return;
+        }
+
+        RootFrame.Navigate(typeof(MainPage));
     }
 
     private void ExitApplication()
     {
         _exitRequested = true;
         RemoveTrayIcon();
+        DisposeSharedServices();
         Close();
+    }
+
+    private static void DisposeSharedServices()
+    {
+        MainPage.DisposeSharedViewModelAsync().AsTask().GetAwaiter().GetResult();
     }
 
     private nint WndProc(nint hWnd, uint msg, nint wParam, nint lParam)
