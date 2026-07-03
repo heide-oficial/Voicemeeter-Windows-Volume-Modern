@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/native/">
+    <Project Path="native/VMWV.App/VMWV.App.csproj">
+      <Platform Project="x86" />
+    </Project>
+    <Project Path="native/VMWV.Core.Tests/VMWV.Core.Tests.csproj" />
+    <Project Path="native/VMWV.Core/VMWV.Core.csproj" />
+    <Project Path="native/VMWV.Infrastructure.Windows/VMWV.Infrastructure.Windows.csproj" />
+    <Project Path="native/VMWV.Portable/VMWV.Portable.csproj" />
+    <Project Path="native/VMWV.Setup/VMWV.Setup.csproj" />
+  </Folder>
+</Solution>

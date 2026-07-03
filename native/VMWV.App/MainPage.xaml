@@ -1,0 +1,1111 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="VMWV_App.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:VMWV_App"
+    xmlns:models="using:VMWV_App.Models"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <Page.Resources>
+        <Style x:Key="StretchListViewItemStyle" TargetType="ListViewItem">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+        </Style>
+        <Style x:Key="CompactGridViewItemStyle" TargetType="GridViewItem">
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+        </Style>
+        <Style TargetType="ToggleSwitch">
+            <Setter Property="Width" Value="52" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="OnContent" Value="" />
+            <Setter Property="OffContent" Value="" />
+        </Style>
+        <Style TargetType="NumberBox">
+            <Setter Property="Width" Value="96" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="MaxHeight" Value="32" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="SpinButtonPlacementMode" Value="Hidden" />
+        </Style>
+        <DataTemplate x:Key="BindingTargetRowTemplate" x:DataType="models:BindingTargetItem">
+            <Border
+                HorizontalAlignment="Stretch"
+                MinHeight="72"
+                Padding="16"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource ControlCornerRadius}">
+                <Grid HorizontalAlignment="Stretch" ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        Width="24"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="{x:Bind IconName, Mode=OneWay}"
+                        FontFamily="Segoe Fluent Icons"
+                        FontSize="20"
+                        Glyph="{x:Bind IconGlyph, Mode=OneWay}" />
+                    <StackPanel
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Spacing="2">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{x:Bind Name, Mode=OneWay}" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Detail, Mode=OneWay}"
+                            TextWrapping="WrapWholeWords" />
+                    </StackPanel>
+                    <StackPanel
+                        Grid.Column="2"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal"
+                        Spacing="12">
+                        <TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(IsEnabled), Mode=OneWay}" />
+                        <ToggleSwitch
+                            AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                            IsEnabled="{x:Bind IsAvailable, Mode=OneWay}"
+                            IsOn="{x:Bind IsEnabled, Mode=TwoWay}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Page.Resources>
+
+    <NavigationView
+        x:Name="RootNavigation"
+        AutomationProperties.AutomationId="RootNavigation"
+        CompactPaneLength="64"
+        IsBackButtonVisible="Collapsed"
+        IsPaneOpen="False"
+        IsPaneToggleButtonVisible="False"
+        IsSettingsVisible="False"
+        OpenPaneLength="280"
+        PaneClosed="OnNavigationPaneChanged"
+        PaneDisplayMode="Left"
+        PaneOpened="OnNavigationPaneChanged"
+        SelectionChanged="OnNavigationSelectionChanged">
+        <NavigationView.PaneHeader>
+            <Grid
+                Margin="12,12,12,16"
+                ColumnSpacing="12"
+                MinHeight="40">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="40" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Image
+                    Width="28"
+                    Height="28"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Source="{x:Bind ViewModel.LogoImagePath, Mode=OneWay}" />
+                <TextBlock
+                    x:Name="HeaderAppName"
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="Voicemeeter Windows Volume Modern"
+                    TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </NavigationView.PaneHeader>
+
+        <NavigationView.MenuItems>
+            <NavigationViewItem
+                x:Name="NavCompactLogo"
+                AutomationProperties.AutomationId="NavCompactLogo"
+                IsEnabled="False"
+                SelectsOnInvoked="False"
+                Visibility="Collapsed">
+                <NavigationViewItem.Icon>
+                    <BitmapIcon
+                        ShowAsMonochrome="False"
+                        UriSource="{x:Bind ViewModel.LogoImagePath, Mode=OneWay}" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem
+                x:Name="NavDashboard"
+                AutomationProperties.AutomationId="NavDashboard"
+                Content="Dashboard"
+                Icon="Home"
+                Tag="Dashboard" />
+            <NavigationViewItem
+                AutomationProperties.AutomationId="NavBindings"
+                Content="Bindings"
+                Icon="Audio"
+                Tag="Bindings" />
+            <NavigationViewItem
+                AutomationProperties.AutomationId="NavSettings"
+                Content="Settings"
+                Icon="Setting"
+                Tag="Settings" />
+            <NavigationViewItem
+                AutomationProperties.AutomationId="NavAbout"
+                Content="About"
+                Icon="Help"
+                Tag="About" />
+        </NavigationView.MenuItems>
+
+        <NavigationView.PaneFooter>
+            <Grid Margin="12">
+                <Button
+                    x:Name="PaneToggleButton"
+                    AutomationProperties.AutomationId="BtnPaneToggle"
+                    AutomationProperties.Name="Expand or collapse navigation"
+                    MinWidth="40"
+                    Height="40"
+                    HorizontalAlignment="Stretch"
+                    Padding="0"
+                    Click="OnPaneToggleClicked"
+                    ToolTipService.ToolTip="Expand or collapse navigation">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon
+                            x:Name="PaneToggleIcon"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontFamily="Segoe Fluent Icons"
+                            Glyph="&#xE72A;" />
+                        <TextBlock
+                            x:Name="PaneToggleText"
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Text="Collapse sidebar" />
+                    </Grid>
+                </Button>
+            </Grid>
+        </NavigationView.PaneFooter>
+
+        <Grid
+            x:Name="ContentRoot"
+            Padding="24"
+            SizeChanged="OnContentRootSizeChanged">
+            <Grid
+                x:Name="DashboardSection"
+                Visibility="Visible">
+                <Grid
+                    x:Name="DashboardContent"
+                    RowSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Dashboard" />
+
+                    <Grid
+                        x:Name="DashboardCardsGrid"
+                        Grid.Row="1"
+                        ColumnSpacing="16"
+                        RowSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="DashboardStatusColumn" Width="*" />
+                            <ColumnDefinition x:Name="DashboardBindingsColumn" Width="1.3*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid RowSpacing="16">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Border
+                                MinHeight="96"
+                                Padding="16"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{ThemeResource ControlCornerRadius}">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Voicemeeter" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE8D4;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Voicemeeter" />
+                                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind ViewModel.VoicemeeterStatus, Mode=OneWay}" />
+                                        <TextBlock Text="{x:Bind ViewModel.VoicemeeterDetail, Mode=OneWay}" TextWrapping="WrapWholeWords" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                            <Border
+                                Grid.Row="1"
+                                MinHeight="96"
+                                Padding="16"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{ThemeResource ControlCornerRadius}">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Windows audio" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE995;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Windows audio" />
+                                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind ViewModel.WindowsAudioStatus, Mode=OneWay}" />
+                                        <TextBlock Text="{x:Bind ViewModel.WindowsAudioDetail, Mode=OneWay}" TextWrapping="WrapWholeWords" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <Grid
+                            x:Name="DashboardBindingsCardsGrid"
+                            Grid.Column="1"
+                            RowSpacing="16">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Border
+                                x:Name="DashboardStripBindingsCard"
+                                Padding="16"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{ThemeResource ControlCornerRadius}">
+                                <Grid RowSpacing="12">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <Grid ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Strip bindings" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE8D6;" />
+                                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Style="{StaticResource SubtitleTextBlockStyle}" Text="Strip" />
+                                    </Grid>
+                                    <StackPanel Grid.Row="1" Spacing="8">
+                                        <TextBlock
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="No active strip bindings"
+                                            Visibility="{x:Bind local:MainPage.InverseBoolToVisibility(ViewModel.HasDefinedStripBindings), Mode=OneWay}" />
+                                        <GridView
+                                            ItemContainerStyle="{StaticResource CompactGridViewItemStyle}"
+                                            ItemsSource="{x:Bind ViewModel.DefinedStripBindings, Mode=OneWay}"
+                                            SelectionMode="None"
+                                            Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.HasDefinedStripBindings), Mode=OneWay}">
+                                            <GridView.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <ItemsWrapGrid Orientation="Horizontal" />
+                                                </ItemsPanelTemplate>
+                                            </GridView.ItemsPanel>
+                                            <GridView.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border
+                                                        MinWidth="88"
+                                                        Margin="0,0,8,8"
+                                                        Padding="12,8"
+                                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                                                        <TextBlock Text="{Binding}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </GridView.ItemTemplate>
+                                        </GridView>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                            <Border
+                                x:Name="DashboardBusBindingsCard"
+                                Grid.Row="1"
+                                Padding="16"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{ThemeResource ControlCornerRadius}">
+                                <Grid RowSpacing="12">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <Grid ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Bus bindings" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE9D9;" />
+                                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Style="{StaticResource SubtitleTextBlockStyle}" Text="Bus" />
+                                    </Grid>
+                                    <StackPanel Grid.Row="1" Spacing="8">
+                                        <TextBlock
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="No active bus bindings"
+                                            Visibility="{x:Bind local:MainPage.InverseBoolToVisibility(ViewModel.HasDefinedBusBindings), Mode=OneWay}" />
+                                        <GridView
+                                            ItemContainerStyle="{StaticResource CompactGridViewItemStyle}"
+                                            ItemsSource="{x:Bind ViewModel.DefinedBusBindings, Mode=OneWay}"
+                                            SelectionMode="None"
+                                            Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.HasDefinedBusBindings), Mode=OneWay}">
+                                            <GridView.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <ItemsWrapGrid Orientation="Horizontal" />
+                                                </ItemsPanelTemplate>
+                                            </GridView.ItemsPanel>
+                                            <GridView.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border
+                                                        MinWidth="88"
+                                                        Margin="0,0,8,8"
+                                                        Padding="12,8"
+                                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                                                        <TextBlock Text="{Binding}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </GridView.ItemTemplate>
+                                        </GridView>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Grid>
+
+                    <Border
+                        Grid.Row="2"
+                        Padding="16"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                        <Grid RowSpacing="12">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Diagnostics" />
+                            <ListView
+                                Grid.Row="1"
+                                AutomationProperties.AutomationId="RecentEventsList"
+                                ItemsSource="{x:Bind ViewModel.RecentEvents, Mode=OneWay}"
+                                SelectionMode="None">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Padding="0,8" ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="96" />
+                                                <ColumnDefinition Width="112" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding TimeText}" />
+                                            <TextBlock Grid.Column="1" Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding Category}" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Message}" TextWrapping="WrapWholeWords" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
+
+            <Grid
+                x:Name="BindingsSection"
+                RowSpacing="16"
+                Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Spacing="4">
+                    <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Bindings" />
+                    <TextBlock Text="Select the Voicemeeter strips and buses that should follow Windows volume and mute changes." />
+                </StackPanel>
+                <Grid
+                    x:Name="BindingsColumnsGrid"
+                    Grid.Row="1"
+                    ColumnSpacing="16"
+                    RowSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="BindingsStripColumn" Width="*" />
+                        <ColumnDefinition x:Name="BindingsBusColumn" Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition x:Name="BindingsPrimaryRow" Height="*" />
+                        <RowDefinition x:Name="BindingsSecondaryRow" Height="0" />
+                    </Grid.RowDefinitions>
+                    <Border
+                        x:Name="StripBindingsCard"
+                        Padding="16"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                        <Grid RowSpacing="12">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock
+                                Style="{StaticResource SubtitleTextBlockStyle}"
+                                Text="Strip" />
+                            <ListView
+                                x:Name="StripBindingTargetsList"
+                                Grid.Row="1"
+                                AutomationProperties.AutomationId="StripBindingTargetsList"
+                                ItemContainerStyle="{StaticResource StretchListViewItemStyle}"
+                                ItemTemplate="{StaticResource BindingTargetRowTemplate}"
+                                ItemsSource="{x:Bind ViewModel.StripBindingTargets, Mode=OneWay}"
+                                SelectionMode="None"
+                                Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.HasStripBindingTargets), Mode=OneWay}" />
+                            <TextBlock
+                                Grid.Row="1"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="No strip bindings available"
+                                Visibility="{x:Bind local:MainPage.InverseBoolToVisibility(ViewModel.HasStripBindingTargets), Mode=OneWay}" />
+                        </Grid>
+                    </Border>
+                    <Border
+                        x:Name="BusBindingsCard"
+                        Grid.Column="1"
+                        Padding="16"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                        <Grid RowSpacing="12">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock
+                                Style="{StaticResource SubtitleTextBlockStyle}"
+                                Text="Bus" />
+                            <ListView
+                                x:Name="BusBindingTargetsList"
+                                Grid.Row="1"
+                                AutomationProperties.AutomationId="BusBindingTargetsList"
+                                ItemContainerStyle="{StaticResource StretchListViewItemStyle}"
+                                ItemTemplate="{StaticResource BindingTargetRowTemplate}"
+                                ItemsSource="{x:Bind ViewModel.BusBindingTargets, Mode=OneWay}"
+                                SelectionMode="None"
+                                Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.HasBusBindingTargets), Mode=OneWay}" />
+                            <TextBlock
+                                Grid.Row="1"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="No bus bindings available"
+                                Visibility="{x:Bind local:MainPage.InverseBoolToVisibility(ViewModel.HasBusBindingTargets), Mode=OneWay}" />
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
+
+            <ScrollViewer
+                x:Name="SettingsSection"
+                HorizontalScrollBarVisibility="Hidden"
+                HorizontalScrollMode="Disabled"
+                Visibility="Collapsed">
+                <Grid
+                    x:Name="SettingsContent"
+                    RowSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Settings" />
+
+                    <StackPanel
+                        Grid.Row="1"
+                        Spacing="8">
+                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Control" />
+
+                        <Border
+                            MinHeight="72"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Refresh" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE72C;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="Refresh status" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Update app, audio and Voicemeeter status." />
+                                </StackPanel>
+                                <Button Grid.Column="2" Width="160" AutomationProperties.AutomationId="BtnRefreshStatus" Command="{x:Bind ViewModel.RefreshStatusCommand}" Content="Refresh" />
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            MinHeight="72"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Voicemeeter connection" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE71B;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="Voicemeeter connection" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Connect or disconnect the native Voicemeeter client." />
+                                </StackPanel>
+                                <Button Grid.Column="2" Width="200" AutomationProperties.AutomationId="BtnConnectVoicemeeter" Command="{x:Bind ViewModel.ToggleVoicemeeterConnectionCommand}" Content="{x:Bind ViewModel.VoicemeeterConnectionActionText, Mode=OneWay}" />
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            MinHeight="72"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Show Voicemeeter" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE8A7;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="Show Voicemeeter" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Bring the Voicemeeter window to the foreground." />
+                                </StackPanel>
+                                <Button Grid.Column="2" Width="160" AutomationProperties.AutomationId="BtnShowVoicemeeter" Command="{x:Bind ViewModel.ShowVoicemeeterCommand}" Content="Show" />
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            MinHeight="72"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Restart engine" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE895;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="Restart Voicemeeter audio engine" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Ask Voicemeeter to restart its audio engine." />
+                                </StackPanel>
+                                <Button Grid.Column="2" Width="160" AutomationProperties.AutomationId="BtnRestartEngine" Command="{x:Bind ViewModel.RestartAudioEngineCommand}" Content="Restart" />
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel
+                        Grid.Row="2"
+                        Spacing="8">
+                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Appearance" />
+
+                        <Border
+                            MinHeight="72"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <FontIcon
+                                    Width="24"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="Logo"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="20"
+                                    Glyph="&#xE790;" />
+                                <StackPanel
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Spacing="2">
+                                    <TextBlock Text="Logo variant" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Applies to the sidebar, title bar, taskbar and tray icon." />
+                                </StackPanel>
+                                <ComboBox
+                                    Grid.Column="2"
+                                    Width="240"
+                                    AutomationProperties.AutomationId="CmbLogoVariant"
+                                    HorizontalAlignment="Right"
+                                    ItemsSource="{x:Bind ViewModel.LogoVariants}"
+                                    SelectedItem="{x:Bind ViewModel.LogoVariant, Mode=TwoWay}" />
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel
+                        Grid.Row="3"
+                        Spacing="8">
+                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Startup and sync" />
+
+                        <Border
+                            MinHeight="72"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <FontIcon
+                                    Width="24"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="Startup"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="20"
+                                    Glyph="&#xE756;" />
+                                <StackPanel
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Spacing="2">
+                                    <TextBlock Text="Start with Windows" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Launch the app when the user signs in." />
+                                </StackPanel>
+                                <StackPanel
+                                    Grid.Column="2"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Orientation="Horizontal"
+                                    Spacing="12">
+                                    <TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.StartWithWindows), Mode=OneWay}" />
+                                    <ToggleSwitch AutomationProperties.AutomationId="TglStartWithWindows" IsOn="{x:Bind ViewModel.StartWithWindows, Mode=TwoWay}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            MinHeight="72"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <FontIcon
+                                    Width="24"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="Tray"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="20"
+                                    Glyph="&#xE73F;" />
+                                <StackPanel
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Spacing="2">
+                                    <TextBlock Text="Close to tray" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Keep syncing in the background when the window is closed." />
+                                </StackPanel>
+                                <StackPanel
+                                    Grid.Column="2"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Orientation="Horizontal"
+                                    Spacing="12">
+                                    <TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.CloseToTray), Mode=OneWay}" />
+                                    <ToggleSwitch AutomationProperties.AutomationId="TglCloseToTray" IsOn="{x:Bind ViewModel.CloseToTray, Mode=TwoWay}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            MinHeight="72"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <FontIcon
+                                    Width="24"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="Mute"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="20"
+                                    Glyph="&#xE74F;" />
+                                <StackPanel
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Spacing="2">
+                                    <TextBlock Text="Sync mute state" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Mirror Windows mute changes to selected Voicemeeter targets." />
+                                </StackPanel>
+                                <StackPanel
+                                    Grid.Column="2"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Orientation="Horizontal"
+                                    Spacing="12">
+                                    <TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.SyncMute), Mode=OneWay}" />
+                                    <ToggleSwitch AutomationProperties.AutomationId="TglSyncMute" IsOn="{x:Bind ViewModel.SyncMute, Mode=TwoWay}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            MinHeight="72"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <FontIcon
+                                    Width="24"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="Recovery"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="20"
+                                    Glyph="&#xE777;" />
+                                <StackPanel
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Spacing="2">
+                                    <TextBlock Text="Restore remembered volume" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Keep the last known Windows volume available for recovery." />
+                                </StackPanel>
+                                <StackPanel
+                                    Grid.Column="2"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Orientation="Horizontal"
+                                    Spacing="12">
+                                    <TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.RememberVolume), Mode=OneWay}" />
+                                    <ToggleSwitch AutomationProperties.AutomationId="TglRememberVolume" IsOn="{x:Bind ViewModel.RememberVolume, Mode=TwoWay}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel
+                        Grid.Row="4"
+                        Spacing="8">
+                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Volume mapping" />
+
+                        <Border
+                            MinHeight="72"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Gain limit" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE7BA;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="Limit maximum gain to 0 dB" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Prevent mapped volume from applying positive gain." />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.LimitDbGainToZero), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglLimitDbGain" IsOn="{x:Bind ViewModel.LimitDbGainToZero, Mode=TwoWay}" /></StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            MinHeight="72"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Scale" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE9D2;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="Use linear volume scale" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Map Windows volume using a linear gain curve." />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.LinearVolumeScale), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglLinearScale" IsOn="{x:Bind ViewModel.LinearVolumeScale, Mode=TwoWay}" /></StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Minimum gain" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE738;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="Minimum gain" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Gain applied when Windows volume is at the lowest level." /></StackPanel>
+                                <NumberBox Grid.Column="2" Width="128" AutomationProperties.AutomationId="NumGainMin" HorizontalAlignment="Right" SmallChange="1" SpinButtonPlacementMode="Hidden" Value="{x:Bind ViewModel.GainMin, Mode=TwoWay}" />
+                            </Grid>
+                        </Border>
+
+                        <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Maximum gain" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE74A;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="Maximum gain" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Gain applied when Windows volume reaches 100%." /></StackPanel>
+                                <NumberBox Grid.Column="2" Width="128" AutomationProperties.AutomationId="NumGainMax" HorizontalAlignment="Right" SmallChange="1" SpinButtonPlacementMode="Hidden" Value="{x:Bind ViewModel.GainMax, Mode=TwoWay}" />
+                            </Grid>
+                        </Border>
+
+                        <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Polling" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE916;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="Fallback polling" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Interval used only when event callbacks cannot provide updates." /></StackPanel>
+                                <NumberBox Grid.Column="2" Width="128" AutomationProperties.AutomationId="NumPollingRate" HorizontalAlignment="Right" Minimum="25" SmallChange="25" SpinButtonPlacementMode="Hidden" Value="{x:Bind ViewModel.PollingRate, Mode=TwoWay}" />
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel
+                        Grid.Row="5"
+                        Spacing="8">
+                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Advanced settings" />
+
+                        <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Protection" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE83D;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="Prevent sudden 100% volume spikes" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Avoid unexpected maximum-volume recovery states." /></StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.PreventVolumeSpikes), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglPreventVolumeSpikes" IsOn="{x:Bind ViewModel.PreventVolumeSpikes, Mode=TwoWay}" /></StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Device recovery" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE777;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="Restart engine when audio devices change" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Ask Voicemeeter to recover after default device changes." /></StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.RestartOnDeviceChange), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglRestartOnDeviceChange" IsOn="{x:Bind ViewModel.RestartOnDeviceChange, Mode=TwoWay}" /></StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Any device recovery" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE8AB;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="Restart engine when any device changes" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Use a broader recovery path for unstable audio device setups." /></StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.RestartOnAnyDeviceChange), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglRestartOnAnyDeviceChange" IsOn="{x:Bind ViewModel.RestartOnAnyDeviceChange, Mode=TwoWay}" /></StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Resume recovery" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE895;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="Restart engine after resume" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Recover Voicemeeter after Windows wakes from sleep." /></StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.RestartOnResume), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglRestartOnResume" IsOn="{x:Bind ViewModel.RestartOnResume, Mode=TwoWay}" /></StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Crackle fix" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE945;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="Apply audiodg crackle fix" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Keep the legacy recovery option available for affected systems." /></StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.ApplyCrackleFix), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglCrackleFix" IsOn="{x:Bind ViewModel.ApplyCrackleFix, Mode=TwoWay}" /></StackPanel>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
+
+            <ScrollViewer
+                x:Name="AboutSection"
+                HorizontalScrollBarVisibility="Hidden"
+                HorizontalScrollMode="Disabled"
+                Visibility="Collapsed">
+                <Grid
+                    x:Name="AboutContent"
+                    RowSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="About" />
+                    <Grid
+                        x:Name="AboutCardsGrid"
+                        Grid.Row="1"
+                        ColumnSpacing="16"
+                        RowSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="AboutModernColumn" Width="*" />
+                            <ColumnDefinition x:Name="AboutLegacyColumn" Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Border
+                            x:Name="AboutModernCard"
+                            MinHeight="128"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16" RowSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <TextBlock
+                                        Style="{StaticResource SubtitleTextBlockStyle}"
+                                        Text="Voicemeeter Windows Volume Modern"
+                                        TextWrapping="WrapWholeWords" />
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind ViewModel.VersionText, Mode=OneWay}" />
+                                </StackPanel>
+                                <HyperlinkButton
+                                    Grid.Column="1"
+                                    Width="40"
+                                    Height="40"
+                                    AutomationProperties.AutomationId="BtnModernRepository"
+                                    AutomationProperties.Name="Modern repository"
+                                    HorizontalContentAlignment="Center"
+                                    NavigateUri="https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern"
+                                    Padding="0"
+                                    ToolTipService.ToolTip="Open modern repository">
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A7;" />
+                                </HyperlinkButton>
+                                <TextBlock
+                                    Grid.Row="1"
+                                    Grid.ColumnSpan="2"
+                                    Margin="0,8,0,0"
+                                    Text="Windows-focused rewrite of Voicemeeter Windows Volume, updated and modernized by Matheus Heidemann."
+                                    TextWrapping="WrapWholeWords" />
+                            </Grid>
+                        </Border>
+                        <Border
+                            x:Name="AboutLegacyCard"
+                            Grid.Column="1"
+                            MinHeight="128"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16" RowSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock
+                                    Style="{StaticResource SubtitleTextBlockStyle}"
+                                    Text="Voicemeeter Windows Volume (Original)"
+                                    TextWrapping="WrapWholeWords" />
+                                <HyperlinkButton
+                                    Grid.Column="1"
+                                    Width="40"
+                                    Height="40"
+                                    AutomationProperties.AutomationId="BtnLegacyRepository"
+                                    AutomationProperties.Name="Legacy repository"
+                                    HorizontalContentAlignment="Center"
+                                    NavigateUri="https://github.com/Frosthaven/voicemeeter-windows-volume"
+                                    Padding="0"
+                                    ToolTipService.ToolTip="Open legacy repository">
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A7;" />
+                                </HyperlinkButton>
+                                <TextBlock
+                                    Grid.Row="1"
+                                    Grid.ColumnSpan="2"
+                                    Margin="0,8,0,0"
+                                    Text="Original tray application by Frosthaven. This modern app keeps attribution while replacing the legacy Node.js runtime with a native WinUI 3 implementation."
+                                    TextWrapping="WrapWholeWords" />
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </ScrollViewer>
+        </Grid>
+    </NavigationView>
+</Page>

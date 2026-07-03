@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "VMWV.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "VMWV.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
