@@ -18,7 +18,7 @@
     <Property Id="WixAppFolder" Value="WixPerMachineFolder" />
 
     <StandardDirectory Id="ProgramFilesFolder">
-      <Directory Id="INSTALLFOLDER" Name="Voicemeeter Windows Volume Modern" />
+      <Directory Id="APPLICATIONFOLDER" Name="Voicemeeter Windows Volume Modern" />
     </StandardDirectory>
 
     <StandardDirectory Id="ProgramMenuFolder">
@@ -32,8 +32,8 @@
         Id="StartMenuShortcut"
         Name="Voicemeeter Windows Volume Modern"
         Description="Launch Voicemeeter Windows Volume Modern"
-        Target="[INSTALLFOLDER]VMWV.App.exe"
-        WorkingDirectory="INSTALLFOLDER"
+        Target="[APPLICATIONFOLDER]VMWV.App.exe"
+        WorkingDirectory="APPLICATIONFOLDER"
         Icon="AppIcon.ico" />
       <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
       <RegistryValue
@@ -50,8 +50,8 @@
         Id="DesktopShortcut"
         Name="Voicemeeter Windows Volume Modern"
         Description="Launch Voicemeeter Windows Volume Modern"
-        Target="[INSTALLFOLDER]VMWV.App.exe"
-        WorkingDirectory="INSTALLFOLDER"
+        Target="[APPLICATIONFOLDER]VMWV.App.exe"
+        WorkingDirectory="APPLICATIONFOLDER"
         Icon="AppIcon.ico" />
       <RegistryValue
         Root="HKCU"

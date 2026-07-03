@@ -119,7 +119,7 @@ function Write-WixGeneratedFiles {
     [void]$xml.AppendLine("<?xml version=`"1.0`" encoding=`"utf-8`"?>")
     [void]$xml.AppendLine("<Wix xmlns=`"http://wixtoolset.org/schemas/v4/wxs`">")
     [void]$xml.AppendLine("  <Fragment>")
-    [void]$xml.AppendLine("    <DirectoryRef Id=`"INSTALLFOLDER`">")
+    [void]$xml.AppendLine("    <DirectoryRef Id=`"APPLICATIONFOLDER`">")
     Write-WixDirectory -Directory (Get-Item -LiteralPath $publishRoot) -Xml $xml -ComponentIds $components
     [void]$xml.AppendLine("    </DirectoryRef>")
     [void]$xml.AppendLine("  </Fragment>")
