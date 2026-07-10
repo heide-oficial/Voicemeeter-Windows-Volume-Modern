@@ -6,15 +6,16 @@ using System.Runtime.InteropServices;
 const string appName = "Voicemeeter Windows Volume Modern";
 const string appExeName = "VMWV.App.exe";
 const string payloadResourceName = "VoicemeeterWindowsVolumeModern.Payload.zip";
-const string version = "1.0.0";
+const string version = "1.1.0";
 
 try
 {
     var appDirectory = PortableDirectory();
     var markerPath = Path.Combine(appDirectory, ".payload-version");
     var appPath = Path.Combine(appDirectory, appExeName);
+    var payloadVersion = PortablePayloadVersion();
 
-    if (!File.Exists(appPath) || !File.Exists(markerPath) || File.ReadAllText(markerPath) != version)
+    if (!File.Exists(appPath) || !File.Exists(markerPath) || File.ReadAllText(markerPath) != payloadVersion)
     {
         if (Directory.Exists(appDirectory))
         {
@@ -23,7 +24,7 @@ try
 
         Directory.CreateDirectory(appDirectory);
         ExtractPayload(appDirectory);
-        File.WriteAllText(markerPath, version);
+        File.WriteAllText(markerPath, payloadVersion);
     }
 
     var startInfo = new ProcessStartInfo
@@ -47,6 +48,18 @@ catch (Exception ex)
 
 static string PortableDirectory() =>
     Path.Combine(Path.GetTempPath(), "VoicemeeterWindowsVolumeModernPortable", version);
+
+static string PortablePayloadVersion()
+{
+    var processPath = Environment.ProcessPath;
+    if (string.IsNullOrWhiteSpace(processPath) || !File.Exists(processPath))
+    {
+        return version;
+    }
+
+    var file = new FileInfo(processPath);
+    return $"{version}:{file.Length}:{file.LastWriteTimeUtc.Ticks}";
+}
 
 static void ExtractPayload(string destination)
 {

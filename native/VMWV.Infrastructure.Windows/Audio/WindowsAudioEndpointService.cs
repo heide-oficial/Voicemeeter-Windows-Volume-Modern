@@ -37,8 +37,20 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
             _enumerator = new MMDeviceEnumerator();
             _notificationClient = new EndpointNotificationClient(this);
             _enumerator.RegisterEndpointNotificationCallback(_notificationClient);
-            AttachDefaultEndpoint();
+            TryAttachDefaultEndpoint();
             _isStarted = true;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task RefreshAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_sync)
+        {
+            EnsureEnumerator();
+            TryAttachDefaultEndpoint();
         }
 
         return Task.CompletedTask;
@@ -94,7 +106,7 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
         return ValueTask.CompletedTask;
     }
 
-    private void AttachDefaultEndpoint()
+    private bool TryAttachDefaultEndpoint()
     {
         if (_enumerator is null)
         {
@@ -107,9 +119,20 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
             _device.Dispose();
         }
 
-        _device = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-        _device.AudioEndpointVolume.OnVolumeNotification += OnVolumeNotification;
-        UpdateSnapshotFromEndpoint();
+        try
+        {
+            _device = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            _device.AudioEndpointVolume.OnVolumeNotification += OnVolumeNotification;
+            UpdateSnapshotFromEndpoint();
+            return true;
+        }
+        catch
+        {
+            _device?.Dispose();
+            _device = null;
+            UpdateSnapshotFromEndpoint();
+            return false;
+        }
     }
 
     private void UpdateSnapshotFromEndpoint()
@@ -182,7 +205,7 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
                 return;
             }
 
-            AttachDefaultEndpoint();
+            TryAttachDefaultEndpoint();
         }
 
         DeviceChanged?.Invoke(this, new AudioDeviceChangedEventArgs(added, removed));
@@ -204,6 +227,19 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
         {
             throw new InvalidOperationException("Windows audio endpoint service has not started.");
         }
+    }
+
+    private void EnsureEnumerator()
+    {
+        if (_enumerator is not null && _notificationClient is not null)
+        {
+            return;
+        }
+
+        _enumerator = new MMDeviceEnumerator();
+        _notificationClient = new EndpointNotificationClient(this);
+        _enumerator.RegisterEndpointNotificationCallback(_notificationClient);
+        _isStarted = true;
     }
 
     private static int ToVolumePercent(float scalar) =>

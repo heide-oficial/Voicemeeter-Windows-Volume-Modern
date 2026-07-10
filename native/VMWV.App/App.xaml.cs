@@ -56,7 +56,10 @@ public partial class App : Application
         var mainInstance = AppInstance.FindOrRegisterForKey(MainInstanceKey);
         if (!mainInstance.IsCurrent)
         {
-            _ = mainInstance.RedirectActivationToAsync(AppInstance.GetCurrent().GetActivatedEventArgs());
+            mainInstance.RedirectActivationToAsync(AppInstance.GetCurrent().GetActivatedEventArgs())
+                .AsTask()
+                .GetAwaiter()
+                .GetResult();
             Environment.Exit(0);
             return;
         }
@@ -65,6 +68,10 @@ public partial class App : Application
         Window = new MainWindow();
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         Window.Activate();
+        if (IsBackgroundLaunch(args.Arguments) && Window is MainWindow mainWindow)
+        {
+            mainWindow.HideToTrayAfterStartup();
+        }
     }
 
     private static void OnAppInstanceActivated(object? sender, AppActivationArguments args)
@@ -81,4 +88,9 @@ public partial class App : Application
             }
         });
     }
+
+    private static bool IsBackgroundLaunch(string? arguments) =>
+        !string.IsNullOrWhiteSpace(arguments)
+        && arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(argument => argument.Equals("--background", StringComparison.OrdinalIgnoreCase));
 }

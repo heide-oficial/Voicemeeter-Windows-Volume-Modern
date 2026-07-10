@@ -24,6 +24,7 @@ public enum VoicemeeterConnectionState
     Disconnected,
     WaitingForProcess,
     Connecting,
+    Recovering,
     Connected,
     Error
 }

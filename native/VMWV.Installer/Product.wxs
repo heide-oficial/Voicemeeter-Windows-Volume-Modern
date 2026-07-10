@@ -5,7 +5,7 @@
   <Package
     Name="Voicemeeter Windows Volume Modern"
     Manufacturer="Matheus Heidemann"
-    Version="1.0.0"
+    Version="1.1.0"
     UpgradeCode="9D2360E1-12F5-4D1B-A506-0CFDA8DE34C0"
     Scope="perMachine">
 

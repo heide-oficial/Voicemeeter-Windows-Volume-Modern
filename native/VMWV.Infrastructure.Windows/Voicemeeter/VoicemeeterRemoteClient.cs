@@ -17,6 +17,7 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
     ];
 
     private readonly VoicemeeterRemoteLibrary _library;
+    private readonly SemaphoreSlim _apiLock = new(1, 1);
     private VoicemeeterConnectionState _state = VoicemeeterConnectionState.Disconnected;
     private bool _isLoggedIn;
 
@@ -54,60 +55,111 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
 
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
-        State = VoicemeeterConnectionState.WaitingForProcess;
-        await WaitForVoicemeeterProcessAsync(cancellationToken).ConfigureAwait(false);
+        await _apiLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_isLoggedIn)
+            {
+                State = VoicemeeterConnectionState.Connected;
+                return;
+            }
 
-        State = VoicemeeterConnectionState.Connecting;
-        _library.Load();
+            State = VoicemeeterConnectionState.WaitingForProcess;
+            await WaitForVoicemeeterProcessAsync(cancellationToken).ConfigureAwait(false);
 
-        var loginResult = _library.Login();
-        if (loginResult < 0)
+            State = VoicemeeterConnectionState.Connecting;
+            _library.Load();
+
+            var loginResult = _library.Login();
+            if (loginResult < 0)
+            {
+                State = VoicemeeterConnectionState.Error;
+                throw new InvalidOperationException($"Voicemeeter login failed with code {loginResult}.");
+            }
+
+            _isLoggedIn = true;
+            Edition = await ResolveEditionAsync(cancellationToken).ConfigureAwait(false);
+            State = VoicemeeterConnectionState.Connected;
+        }
+        catch
         {
             State = VoicemeeterConnectionState.Error;
-            throw new InvalidOperationException($"Voicemeeter login failed with code {loginResult}.");
-        }
+            if (_isLoggedIn)
+            {
+                try
+                {
+                    _library.Logout();
+                }
+                catch
+                {
+                }
+            }
 
-        _isLoggedIn = true;
-        Edition = GetEditionName(_library.GetVoicemeeterType());
-        State = VoicemeeterConnectionState.Connected;
-    }
-
-    public Task DisconnectAsync(CancellationToken cancellationToken)
-    {
-        if (_isLoggedIn)
-        {
-            _library.Logout();
             _isLoggedIn = false;
+            throw;
         }
-
-        State = VoicemeeterConnectionState.Disconnected;
-        return Task.CompletedTask;
+        finally
+        {
+            _apiLock.Release();
+        }
     }
 
-    public Task<IReadOnlyList<VoicemeeterBindingTarget>> GetBindingTargetsAsync(CancellationToken cancellationToken)
+    public async Task DisconnectAsync(CancellationToken cancellationToken)
     {
-        EnsureConnected();
-
-        var targetCount = Edition switch
+        await _apiLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            "Voicemeeter Potato" => (Strips: 8, Buses: 8),
-            "Voicemeeter Banana" => (Strips: 5, Buses: 5),
-            "Voicemeeter" => (Strips: 3, Buses: 2),
-            _ => (Strips: 8, Buses: 8)
-        };
+            if (_isLoggedIn)
+            {
+                _library.Logout();
+                _isLoggedIn = false;
+            }
 
-        var targets = new List<VoicemeeterBindingTarget>(targetCount.Strips + targetCount.Buses);
-        for (var index = 0; index < targetCount.Strips; index++)
-        {
-            targets.Add(CreateTarget("Strip", index));
+            State = VoicemeeterConnectionState.Disconnected;
         }
-
-        for (var index = 0; index < targetCount.Buses; index++)
+        finally
         {
-            targets.Add(CreateTarget("Bus", index));
+            _apiLock.Release();
         }
+    }
 
-        return Task.FromResult<IReadOnlyList<VoicemeeterBindingTarget>>(targets);
+    public async Task<IReadOnlyList<VoicemeeterBindingTarget>> GetBindingTargetsAsync(CancellationToken cancellationToken)
+    {
+        await _apiLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            EnsureConnected();
+
+            var targetCount = Edition switch
+            {
+                "Voicemeeter Potato" => (Strips: 8, Buses: 8),
+                "Voicemeeter Banana" => (Strips: 5, Buses: 5),
+                "Voicemeeter" => (Strips: 3, Buses: 2),
+                _ => (Strips: 8, Buses: 8)
+            };
+
+            var targets = new List<VoicemeeterBindingTarget>(targetCount.Strips + targetCount.Buses);
+            for (var index = 0; index < targetCount.Strips; index++)
+            {
+                targets.Add(CreateTarget("Strip", index));
+            }
+
+            for (var index = 0; index < targetCount.Buses; index++)
+            {
+                targets.Add(CreateTarget("Bus", index));
+            }
+
+            return targets;
+        }
+        catch
+        {
+            MarkConnectionLost();
+            throw;
+        }
+        finally
+        {
+            _apiLock.Release();
+        }
     }
 
     public Task SetGainAsync(VoicemeeterBindingTarget target, double gain, CancellationToken cancellationToken)
@@ -115,26 +167,38 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
         return SetGainAsync([target], gain, cancellationToken);
     }
 
-    public Task SetGainAsync(IReadOnlyList<VoicemeeterBindingTarget> targets, double gain, CancellationToken cancellationToken)
+    public async Task SetGainAsync(IReadOnlyList<VoicemeeterBindingTarget> targets, double gain, CancellationToken cancellationToken)
     {
-        EnsureConnected();
-        cancellationToken.ThrowIfCancellationRequested();
-
         if (targets.Count == 0)
         {
-            return Task.CompletedTask;
+            return;
         }
 
-        var gainText = gain.ToString("0.0", CultureInfo.InvariantCulture);
-        var script = new StringBuilder(targets.Count * 24);
-        foreach (var target in targets)
+        await _apiLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            script.Append(CultureInfo.InvariantCulture, $"{target.Kind}[{target.Index}].Gain = {gainText};");
-        }
+            EnsureConnected();
+            cancellationToken.ThrowIfCancellationRequested();
 
-        _library.SetParameters(script.ToString());
-        ParametersChanged?.Invoke(this, EventArgs.Empty);
-        return Task.CompletedTask;
+            var gainText = gain.ToString("0.0", CultureInfo.InvariantCulture);
+            var script = new StringBuilder(targets.Count * 24);
+            foreach (var target in targets)
+            {
+                script.Append(CultureInfo.InvariantCulture, $"{target.Kind}[{target.Index}].Gain = {gainText};");
+            }
+
+            _library.SetParameters(script.ToString());
+            ParametersChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            MarkConnectionLost();
+            throw;
+        }
+        finally
+        {
+            _apiLock.Release();
+        }
     }
 
     public Task SetMuteAsync(VoicemeeterBindingTarget target, bool isMuted, CancellationToken cancellationToken)
@@ -142,40 +206,48 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
         return SetMuteAsync([target], isMuted, cancellationToken);
     }
 
-    public Task SetMuteAsync(IReadOnlyList<VoicemeeterBindingTarget> targets, bool isMuted, CancellationToken cancellationToken)
+    public async Task SetMuteAsync(IReadOnlyList<VoicemeeterBindingTarget> targets, bool isMuted, CancellationToken cancellationToken)
     {
-        EnsureConnected();
-        cancellationToken.ThrowIfCancellationRequested();
-
         if (targets.Count == 0)
         {
-            return Task.CompletedTask;
+            return;
         }
 
-        var muteText = isMuted ? "1" : "0";
-        var script = new StringBuilder(targets.Count * 24);
-        foreach (var target in targets)
+        await _apiLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            script.Append(CultureInfo.InvariantCulture, $"{target.Kind}[{target.Index}].Mute = {muteText};");
+            EnsureConnected();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var muteText = isMuted ? "1" : "0";
+            var script = new StringBuilder(targets.Count * 24);
+            foreach (var target in targets)
+            {
+                script.Append(CultureInfo.InvariantCulture, $"{target.Kind}[{target.Index}].Mute = {muteText};");
+            }
+
+            _library.SetParameters(script.ToString());
+            ParametersChanged?.Invoke(this, EventArgs.Empty);
         }
-
-        _library.SetParameters(script.ToString());
-        ParametersChanged?.Invoke(this, EventArgs.Empty);
-        return Task.CompletedTask;
+        catch
+        {
+            MarkConnectionLost();
+            throw;
+        }
+        finally
+        {
+            _apiLock.Release();
+        }
     }
 
-    public Task RestartAudioEngineAsync(CancellationToken cancellationToken)
+    public async Task RestartAudioEngineAsync(CancellationToken cancellationToken)
     {
-        EnsureConnected();
-        _library.SetParameters("Command.Restart = 1;");
-        return Task.CompletedTask;
+        await RunCommandAsync("Command.Restart = 1;", cancellationToken).ConfigureAwait(false);
     }
 
-    public Task ShowAsync(CancellationToken cancellationToken)
+    public async Task ShowAsync(CancellationToken cancellationToken)
     {
-        EnsureConnected();
-        _library.SetParameters("Command.Show = 1;");
-        return Task.CompletedTask;
+        await RunCommandAsync("Command.Show = 1;", cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
@@ -268,6 +340,38 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
         }
     }
 
+    private async Task RunCommandAsync(string script, CancellationToken cancellationToken)
+    {
+        await _apiLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            EnsureConnected();
+            cancellationToken.ThrowIfCancellationRequested();
+            _library.SetParameters(script);
+            ParametersChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            MarkConnectionLost();
+            throw;
+        }
+        finally
+        {
+            _apiLock.Release();
+        }
+    }
+
+    private void MarkConnectionLost()
+    {
+        if (!_isLoggedIn)
+        {
+            return;
+        }
+
+        _isLoggedIn = false;
+        State = VoicemeeterConnectionState.Error;
+    }
+
     private static string GetEditionName(int type) =>
         type switch
         {
@@ -276,6 +380,23 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
             3 => "Voicemeeter Potato",
             _ => "Unknown"
         };
+
+    private async Task<string> ResolveEditionAsync(CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var edition = GetEditionName(_library.GetVoicemeeterType());
+            if (edition != "Unknown")
+            {
+                return edition;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(150), cancellationToken).ConfigureAwait(false);
+        }
+
+        throw new InvalidOperationException("Voicemeeter connected but the edition could not be detected.");
+    }
 }
 
 internal sealed class VoicemeeterRemoteLibrary : IDisposable

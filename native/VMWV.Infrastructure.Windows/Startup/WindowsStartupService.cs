@@ -19,9 +19,15 @@ public sealed class WindowsStartupService : IStartupService
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: false);
             var value = key?.GetValue(RunValueName) as string;
-            return Task.FromResult(string.IsNullOrWhiteSpace(value)
-                ? StartupRegistrationState.Disabled
-                : StartupRegistrationState.Enabled);
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return Task.FromResult(StartupRegistrationState.Disabled);
+            }
+
+            var executablePath = ResolveAppExecutablePath();
+            return Task.FromResult(value.Contains(executablePath, StringComparison.OrdinalIgnoreCase)
+                ? StartupRegistrationState.Enabled
+                : StartupRegistrationState.Error);
         }
         catch
         {
@@ -38,7 +44,7 @@ public sealed class WindowsStartupService : IStartupService
 
         if (isEnabled)
         {
-            key.SetValue(RunValueName, $"\"{ResolveAppExecutablePath()}\"", RegistryValueKind.String);
+            key.SetValue(RunValueName, $"\"{ResolveAppExecutablePath()}\" --background", RegistryValueKind.String);
         }
         else
         {

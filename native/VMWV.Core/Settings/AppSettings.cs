@@ -29,6 +29,9 @@ public sealed class AppSettings
     [JsonPropertyName("logo_variant")]
     public string LogoVariant { get; set; } = "Color";
 
+    [JsonPropertyName("layout_mode")]
+    public string LayoutMode { get; set; } = "Compact";
+
     [JsonPropertyName("limit_db_gain_to_0")]
     public bool LimitDbGainToZero { get; set; }
 
@@ -128,6 +131,18 @@ public sealed class AppSettings
         if (LogoVariant != normalizedLogoVariant)
         {
             LogoVariant = normalizedLogoVariant;
+            changed = true;
+        }
+
+        var normalizedLayoutMode = LayoutMode switch
+        {
+            "Expanded" => "Expanded",
+            _ => "Compact"
+        };
+
+        if (LayoutMode != normalizedLayoutMode)
+        {
+            LayoutMode = normalizedLayoutMode;
             changed = true;
         }
 

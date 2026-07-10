@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using System.ComponentModel;
 using VMWV.Infrastructure.Windows.Audio;
 using VMWV.Infrastructure.Windows.Startup;
 using VMWV.Infrastructure.Windows.Voicemeeter;
@@ -41,14 +42,35 @@ public sealed partial class MainPage : Page
         await SharedViewModel.Value.DisposeAsync();
     }
 
+    public static async Task NotifySystemResumeAsync()
+    {
+        if (!SharedViewModel.IsValueCreated || _sharedViewModelDisposed)
+        {
+            return;
+        }
+
+        await SharedViewModel.Value.HandleSystemResumeAsync();
+    }
+
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         await ViewModel.InitializeAsync();
         QueueResponsiveLayoutUpdate();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ViewModel.LayoutMode))
+        {
+            _lastLayoutWidth = -1;
+            QueueResponsiveLayoutUpdate();
+        }
     }
 
     private void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -129,9 +151,9 @@ public sealed partial class MainPage : Page
         }
 
         _lastLayoutWidth = width;
-        var contentWidth = EffectiveContentWidth(width);
-        SettingsContent.Width = EffectiveViewportWidth(SettingsSection, width);
-        AboutContent.Width = EffectiveViewportWidth(AboutSection, width);
+        var contentWidth = EffectiveContentWidth(width, ViewModel.LayoutMode);
+        SettingsContent.Width = EffectiveViewportWidth(SettingsSection, width, ViewModel.LayoutMode);
+        AboutContent.Width = EffectiveViewportWidth(AboutSection, width, ViewModel.LayoutMode);
         DashboardContent.Width = contentWidth;
         BindingsSection.Width = contentWidth;
         var narrow = width < 760;
@@ -160,18 +182,26 @@ public sealed partial class MainPage : Page
         Grid.SetRow(AboutLegacyCard, narrow ? 1 : 0);
     }
 
-    private static double EffectiveViewportWidth(ScrollViewer scrollViewer, double fallback)
+    private static double EffectiveViewportWidth(ScrollViewer scrollViewer, double fallback, string layoutMode)
     {
+        if (layoutMode == "Expanded")
+        {
+            return Math.Max(0, fallback - 16);
+        }
+
         var viewport = scrollViewer.ViewportWidth;
         if (!double.IsNaN(viewport) && !double.IsInfinity(viewport) && viewport > 0)
         {
-            return Math.Max(0, viewport - 16);
+            return Math.Min(1040, Math.Max(0, viewport - 16));
         }
 
-        return Math.Max(0, fallback - 16);
+        return Math.Min(1040, Math.Max(0, fallback - 16));
     }
 
-    private static double EffectiveContentWidth(double fallback) => Math.Max(0, fallback - 16);
+    private static double EffectiveContentWidth(double fallback, string layoutMode) =>
+        layoutMode == "Expanded"
+            ? Math.Max(0, fallback - 16)
+            : Math.Min(1040, Math.Max(0, fallback - 16));
 
     public static Visibility BoolToVisibility(bool value) =>
         value ? Visibility.Visible : Visibility.Collapsed;

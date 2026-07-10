@@ -687,6 +687,44 @@
                                     SelectedItem="{x:Bind ViewModel.LogoVariant, Mode=TwoWay}" />
                             </Grid>
                         </Border>
+
+                        <Border
+                            MinHeight="72"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <FontIcon
+                                    Width="24"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="Layout"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="20"
+                                    Glyph="&#xE8A9;" />
+                                <StackPanel
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Spacing="2">
+                                    <TextBlock Text="Interface layout" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Choose compact centered pages or expanded full-width pages." />
+                                </StackPanel>
+                                <ComboBox
+                                    Grid.Column="2"
+                                    Width="240"
+                                    AutomationProperties.AutomationId="CmbLayoutMode"
+                                    HorizontalAlignment="Right"
+                                    ItemsSource="{x:Bind ViewModel.LayoutModes}"
+                                    SelectedItem="{x:Bind ViewModel.LayoutMode, Mode=TwoWay}" />
+                            </Grid>
+                        </Border>
                     </StackPanel>
 
                     <StackPanel
@@ -973,14 +1011,6 @@
                             </Grid>
                         </Border>
 
-                        <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Crackle fix" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE945;" />
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="Apply audiodg crackle fix" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Keep the legacy recovery option available for affected systems." /></StackPanel>
-                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.ApplyCrackleFix), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglCrackleFix" IsOn="{x:Bind ViewModel.ApplyCrackleFix, Mode=TwoWay}" /></StackPanel>
-                            </Grid>
-                        </Border>
                     </StackPanel>
                 </Grid>
             </ScrollViewer>

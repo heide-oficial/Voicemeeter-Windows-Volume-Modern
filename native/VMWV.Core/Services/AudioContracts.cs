@@ -9,6 +9,7 @@ public interface IAudioEndpointService : IAsyncDisposable
     AudioEndpointSnapshot Current { get; }
 
     Task StartAsync(CancellationToken cancellationToken);
+    Task RefreshAsync(CancellationToken cancellationToken);
     Task SetVolumeAsync(int volume, CancellationToken cancellationToken);
     Task SetMuteAsync(bool isMuted, CancellationToken cancellationToken);
 }

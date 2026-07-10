@@ -31,7 +31,10 @@ public sealed partial class MainWindow : Window
     private const uint TrayMenuExit = 1002;
     private const uint WmCommand = 0x0111;
     private const uint WmLButtonDoubleClick = 0x0203;
+    private const uint WmPowerBroadcast = 0x0218;
     private const uint WmRButtonUp = 0x0205;
+    private const int PbtApmResumeSuspend = 0x0007;
+    private const int PbtApmResumeAutomatic = 0x0012;
 
     private readonly JsonSettingsStore _settingsStore = new(AppSettingsPaths.DefaultSettingsPath);
     private readonly WindowProc _windowProc;
@@ -40,6 +43,7 @@ public sealed partial class MainWindow : Window
     private string _brandIconPath;
     private string _brandVariant;
     private nint _oldWindowProc;
+    private uint _taskbarCreatedMessage;
     private bool _closeToTray;
     private bool _exitRequested;
     private bool _trayIconVisible;
@@ -83,12 +87,16 @@ public sealed partial class MainWindow : Window
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out Point point);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterWindowMessageW(string lpString);
+
     public MainWindow()
     {
         InitializeComponent();
         _hwnd = Win32Interop.GetWindowFromWindowId(AppWindow.Id);
         _windowProc = WndProc;
         _oldWindowProc = SetWindowLongPtrW(_hwnd, GwlWndProc, Marshal.GetFunctionPointerForDelegate(_windowProc));
+        _taskbarCreatedMessage = RegisterWindowMessageW("TaskbarCreated");
         var settings = ReadWindowSettings();
         _brandVariant = settings.LogoVariant;
         _closeToTray = settings.CloseToTray;
@@ -143,7 +151,7 @@ public sealed partial class MainWindow : Window
         if (_exitRequested)
         {
             RemoveTrayIcon();
-            DisposeSharedServices();
+            _ = DisposeSharedServicesAsync();
             RestoreWindowProc();
             return;
         }
@@ -151,7 +159,7 @@ public sealed partial class MainWindow : Window
         if (!_closeToTray)
         {
             RemoveTrayIcon();
-            DisposeSharedServices();
+            _ = DisposeSharedServicesAsync();
             RestoreWindowProc();
             return;
         }
@@ -173,6 +181,12 @@ public sealed partial class MainWindow : Window
         ShowWindow(_hwnd, SwShow);
         ShowWindow(_hwnd, SwRestore);
         SetForegroundWindow(_hwnd);
+    }
+
+    public void HideToTrayAfterStartup()
+    {
+        AddTrayIcon();
+        App.DispatcherQueue.TryEnqueue(() => ShowWindow(_hwnd, SwHide));
     }
 
     private void UnloadShellContent()
@@ -199,17 +213,17 @@ public sealed partial class MainWindow : Window
         RootFrame.Navigate(typeof(MainPage));
     }
 
-    private void ExitApplication()
+    private async void ExitApplication()
     {
         _exitRequested = true;
         RemoveTrayIcon();
-        DisposeSharedServices();
+        await DisposeSharedServicesAsync();
         Close();
     }
 
-    private static void DisposeSharedServices()
+    private static async Task DisposeSharedServicesAsync()
     {
-        MainPage.DisposeSharedViewModelAsync().AsTask().GetAwaiter().GetResult();
+        await MainPage.DisposeSharedViewModelAsync();
     }
 
     private nint WndProc(nint hWnd, uint msg, nint wParam, nint lParam)
@@ -228,6 +242,23 @@ public sealed partial class MainWindow : Window
                 ShowTrayMenu();
                 return 0;
             }
+        }
+
+        if (msg == WmPowerBroadcast)
+        {
+            var powerEvent = wParam.ToInt32();
+            if (powerEvent is PbtApmResumeAutomatic or PbtApmResumeSuspend)
+            {
+                _ = MainPage.NotifySystemResumeAsync();
+                return 1;
+            }
+        }
+
+        if (_taskbarCreatedMessage != 0 && msg == _taskbarCreatedMessage && _trayIconVisible)
+        {
+            _trayIconVisible = false;
+            AddTrayIcon();
+            return 0;
         }
 
         if (msg == WmCommand)
