@@ -65,13 +65,16 @@ public partial class App : Application
         }
 
         mainInstance.Activated += OnAppInstanceActivated;
+        var isBackgroundLaunch = IsBackgroundLaunch(args.Arguments);
         Window = new MainWindow();
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        Window.Activate();
-        if (IsBackgroundLaunch(args.Arguments) && Window is MainWindow mainWindow)
+        if (isBackgroundLaunch && Window is MainWindow mainWindow)
         {
-            mainWindow.HideToTrayAfterStartup();
+            _ = mainWindow.StartInTrayAsync();
+            return;
         }
+
+        Window.Activate();
     }
 
     private static void OnAppInstanceActivated(object? sender, AppActivationArguments args)
@@ -80,6 +83,12 @@ public partial class App : Application
         {
             if (Window is MainWindow mainWindow)
             {
+                if (IsBackgroundActivation(args))
+                {
+                    _ = mainWindow.StartInTrayAsync();
+                    return;
+                }
+
                 mainWindow.RestoreAndActivate();
             }
             else
@@ -93,4 +102,10 @@ public partial class App : Application
         !string.IsNullOrWhiteSpace(arguments)
         && arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Any(argument => argument.Equals("--background", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsBackgroundActivation(AppActivationArguments args)
+    {
+        var argumentsProperty = args.Data?.GetType().GetProperty("Arguments");
+        return IsBackgroundLaunch(argumentsProperty?.GetValue(args.Data) as string);
+    }
 }

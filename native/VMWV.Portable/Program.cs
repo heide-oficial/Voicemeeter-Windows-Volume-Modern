@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 const string appName = "Voicemeeter Windows Volume Modern";
 const string appExeName = "VMWV.App.exe";
 const string payloadResourceName = "VoicemeeterWindowsVolumeModern.Payload.zip";
-const string version = "1.1.0";
+const string version = "1.1.1";
 
 try
 {

@@ -197,7 +197,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     public partial double PollingRate { get; set; }
 
-    public string VersionText => "v1.1.0";
+    public string VersionText => "v1.1.1";
 
     public async Task InitializeAsync()
     {

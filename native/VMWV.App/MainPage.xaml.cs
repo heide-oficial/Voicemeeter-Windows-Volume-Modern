@@ -52,10 +52,20 @@ public sealed partial class MainPage : Page
         await SharedViewModel.Value.HandleSystemResumeAsync();
     }
 
+    public static async Task InitializeSharedViewModelAsync()
+    {
+        if (_sharedViewModelDisposed)
+        {
+            return;
+        }
+
+        await SharedViewModel.Value.InitializeAsync();
+    }
+
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
-        await ViewModel.InitializeAsync();
+        await InitializeSharedViewModelAsync();
         QueueResponsiveLayoutUpdate();
     }
 

@@ -178,15 +178,17 @@ public sealed partial class MainWindow : Window
     public void RestoreAndActivate()
     {
         EnsureShellContent();
+        Activate();
         ShowWindow(_hwnd, SwShow);
         ShowWindow(_hwnd, SwRestore);
         SetForegroundWindow(_hwnd);
     }
 
-    public void HideToTrayAfterStartup()
+    public async Task StartInTrayAsync()
     {
         AddTrayIcon();
-        App.DispatcherQueue.TryEnqueue(() => ShowWindow(_hwnd, SwHide));
+        ShowWindow(_hwnd, SwHide);
+        await MainPage.InitializeSharedViewModelAsync();
     }
 
     private void UnloadShellContent()
