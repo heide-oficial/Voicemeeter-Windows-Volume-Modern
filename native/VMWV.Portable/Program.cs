@@ -34,6 +34,11 @@ try
         UseShellExecute = false
     };
 
+    foreach (var argument in Environment.GetCommandLineArgs().Skip(1))
+    {
+        startInfo.ArgumentList.Add(argument);
+    }
+
     if (!string.IsNullOrWhiteSpace(Environment.ProcessPath))
     {
         startInfo.EnvironmentVariables["VMWV_PORTABLE_LAUNCHER"] = Environment.ProcessPath;

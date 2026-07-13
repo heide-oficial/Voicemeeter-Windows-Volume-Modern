@@ -53,19 +53,23 @@ public partial class App : Application
     /// <param name="args">Details about the launch request and process.</param>
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
+        var isBackgroundLaunch = IsBackgroundLaunch(args.Arguments) || IsBackgroundCommandLine();
         var mainInstance = AppInstance.FindOrRegisterForKey(MainInstanceKey);
         if (!mainInstance.IsCurrent)
         {
-            mainInstance.RedirectActivationToAsync(AppInstance.GetCurrent().GetActivatedEventArgs())
-                .AsTask()
-                .GetAwaiter()
-                .GetResult();
+            if (!isBackgroundLaunch)
+            {
+                mainInstance.RedirectActivationToAsync(AppInstance.GetCurrent().GetActivatedEventArgs())
+                    .AsTask()
+                    .GetAwaiter()
+                    .GetResult();
+            }
+
             Environment.Exit(0);
             return;
         }
 
         mainInstance.Activated += OnAppInstanceActivated;
-        var isBackgroundLaunch = IsBackgroundLaunch(args.Arguments);
         Window = new MainWindow();
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         if (isBackgroundLaunch && Window is MainWindow mainWindow)
@@ -101,7 +105,13 @@ public partial class App : Application
     private static bool IsBackgroundLaunch(string? arguments) =>
         !string.IsNullOrWhiteSpace(arguments)
         && arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Any(argument => argument.Equals("--background", StringComparison.OrdinalIgnoreCase));
+            .Any(IsBackgroundArgument);
+
+    private static bool IsBackgroundCommandLine() =>
+        Environment.GetCommandLineArgs().Skip(1).Any(IsBackgroundArgument);
+
+    private static bool IsBackgroundArgument(string argument) =>
+        argument.Equals("--background", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsBackgroundActivation(AppActivationArguments args)
     {
