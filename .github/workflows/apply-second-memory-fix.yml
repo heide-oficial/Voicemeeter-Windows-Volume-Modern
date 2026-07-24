@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   build:
@@ -25,39 +24,18 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Compile application
-        id: compile
-        continue-on-error: true
         shell: pwsh
-        run: |
-          dotnet build native/VMWV.App/VMWV.App.csproj -c Release -p:Platform=x64 -p:WindowsPackageType=None -v:minimal *> compile.log
-          $exitCode = $LASTEXITCODE
-          Get-Content -LiteralPath compile.log
-          exit $exitCode
+        run: dotnet build native/VMWV.App/VMWV.App.csproj -c Release -p:Platform=x64 -p:WindowsPackageType=None -v:minimal
 
-      - name: Report compiler failure
-        if: steps.compile.outcome == 'failure'
+      - name: Build portable x64 executable
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $tail = (Get-Content -LiteralPath compile.log -Tail 80) -join "`n"
-          $body = "Second-fix compile failed:`n`n``````text`n$tail`n``````"
-          gh pr comment ${{ github.event.pull_request.number }} --body $body
-          exit 1
+        run: ./scripts/build-release.ps1 -Platform x64 -SkipSetup
 
-      - name: Build portable EXE and MSI
-        if: steps.compile.outcome == 'success'
-        shell: pwsh
-        run: ./scripts/build-release.ps1 -Platform x64
-
-      - name: Upload replacement builds
-        if: success()
+      - name: Upload replacement portable build
         uses: actions/upload-artifact@v4
         with:
-          name: Voicemeeter-Windows-Volume-Modern-second-fix-x64
-          path: |
-            artifacts/release/VoicemeeterWindowsVolumeModern-Portable-x64.exe
-            artifacts/release/VoicemeeterWindowsVolumeModern-Setup-x64.msi
+          name: Voicemeeter-Windows-Volume-Modern-second-fix-portable-x64
+          path: artifacts/release/VoicemeeterWindowsVolumeModern-Portable-x64.exe
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
