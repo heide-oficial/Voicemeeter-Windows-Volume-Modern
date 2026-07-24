@@ -1,0 +1,51 @@
+name: Build second memory fix
+
+on:
+  pull_request:
+    branches:
+      - agent/stop-audio-endpoint-refresh-churn
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out updated fix branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/stop-audio-endpoint-refresh-churn
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish runnable x64 application
+        shell: pwsh
+        run: |
+          dotnet publish native/VMWV.App/VMWV.App.csproj `
+            -c Release `
+            -r win-x64 `
+            -p:Platform=x64 `
+            -p:WindowsPackageType=None `
+            -p:WindowsAppSDKSelfContained=true `
+            -p:SelfContained=true `
+            -p:PublishSingleFile=false `
+            -p:PublishTrimmed=false `
+            -o artifacts/second-fix-app
+
+          if (-not (Test-Path artifacts/second-fix-app/VMWV.App.exe)) {
+              throw "Publish did not create VMWV.App.exe"
+          }
+
+      - name: Upload runnable replacement build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Voicemeeter-Windows-Volume-Modern-second-fix-x64
+          path: artifacts/second-fix-app
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
