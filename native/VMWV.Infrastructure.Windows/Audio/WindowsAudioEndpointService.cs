@@ -50,7 +50,23 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
         lock (_sync)
         {
             EnsureEnumerator();
-            TryAttachDefaultEndpoint();
+
+            if (_device is null)
+            {
+                TryAttachDefaultEndpoint();
+            }
+            else
+            {
+                try
+                {
+                    UpdateSnapshotFromEndpoint();
+                }
+                catch
+                {
+                    // Recreate the endpoint only if the existing COM object has become invalid.
+                    TryAttachDefaultEndpoint();
+                }
+            }
         }
 
         return Task.CompletedTask;
