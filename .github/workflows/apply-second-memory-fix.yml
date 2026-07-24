@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   build:
@@ -23,22 +24,31 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Build portable EXE and MSI
+      - name: Compile application
+        id: compile
+        continue-on-error: true
         shell: pwsh
         run: |
-          & ./scripts/build-release.ps1 -Platform x64 *>&1 | Tee-Object -FilePath build.log
-          if ($LASTEXITCODE -ne 0) {
-              exit $LASTEXITCODE
-          }
+          dotnet build native/VMWV.App/VMWV.App.csproj -c Release -p:Platform=x64 -p:WindowsPackageType=None -v:minimal *> compile.log
+          $exitCode = $LASTEXITCODE
+          Get-Content -LiteralPath compile.log
+          exit $exitCode
 
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: second-fix-build-log
-          path: build.log
-          if-no-files-found: error
-          retention-days: 7
+      - name: Report compiler failure
+        if: steps.compile.outcome == 'failure'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tail = (Get-Content -LiteralPath compile.log -Tail 80) -join "`n"
+          $body = "Second-fix compile failed:`n`n``````text`n$tail`n``````"
+          gh pr comment ${{ github.event.pull_request.number }} --body $body
+          exit 1
+
+      - name: Build portable EXE and MSI
+        if: steps.compile.outcome == 'success'
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -Platform x64
 
       - name: Upload replacement builds
         if: success()
