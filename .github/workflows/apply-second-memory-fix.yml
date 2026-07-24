@@ -1,4 +1,4 @@
-name: Apply second memory fix
+name: Build second memory fix
 
 on:
   pull_request:
@@ -6,69 +6,17 @@ on:
       - agent/stop-audio-endpoint-refresh-churn
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch-and-build:
+  build:
     runs-on: windows-latest
 
     steps:
-      - name: Check out fix branch
+      - name: Check out updated fix branch
         uses: actions/checkout@v4
         with:
           ref: agent/stop-audio-endpoint-refresh-churn
-          fetch-depth: 0
-
-      - name: Apply low-frequency fallback polling fix
-        shell: pwsh
-        run: |
-          $path = "native/VMWV.App/ViewModels/MainPageViewModel.cs"
-          $content = Get-Content -LiteralPath $path -Raw
-
-          $replacements = @(
-              @{
-                  Old = '    private static readonly TimeSpan SettingsSaveDebounceDelay = TimeSpan.FromMilliseconds(250);'
-                  New = "    private static readonly TimeSpan SettingsSaveDebounceDelay = TimeSpan.FromMilliseconds(250);`r`n    private static readonly TimeSpan FallbackPollingInterval = TimeSpan.FromSeconds(5);"
-              },
-              @{
-                  Old = "    private DateTimeOffset _lastAudioCallback = DateTimeOffset.MinValue;`r`n"
-                  New = ''
-              },
-              @{
-                  Old = "        _fallbackPollingStarted = true;`r`n        _lastAudioCallback = DateTimeOffset.Now;`r`n        _ = PollAudioFallbackAsync();"
-                  New = "        _fallbackPollingStarted = true;`r`n        _ = PollAudioFallbackAsync();"
-              },
-              @{
-                  Old = "            var delay = TimeSpan.FromMilliseconds(Math.Clamp((int)Math.Round(PollingRate), 25, 10_000));`r`n            try`r`n            {`r`n                await Task.Delay(delay, _shutdown.Token);`r`n                if (DateTimeOffset.Now - _lastAudioCallback < TimeSpan.FromSeconds(5))`r`n                {`r`n                    continue;`r`n                }"
-                  New = "            try`r`n            {`r`n                await Task.Delay(FallbackPollingInterval, _shutdown.Token);"
-              },
-              @{
-                  Old = "        _lastAudioCallback = DateTimeOffset.Now;`r`n        _lastObservedVolume = args.NewVolume;"
-                  New = "        _lastObservedVolume = args.NewVolume;"
-              },
-              @{
-                  Old = "        _lastAudioCallback = DateTimeOffset.Now;`r`n        _lastObservedMute = args.IsMuted;"
-                  New = "        _lastObservedMute = args.IsMuted;"
-              }
-          )
-
-          foreach ($replacement in $replacements) {
-              if (-not $content.Contains($replacement.Old)) {
-                  throw "Expected source block was not found. Refusing to produce a partial patch."
-              }
-              $content = $content.Replace($replacement.Old, $replacement.New)
-          }
-
-          Set-Content -LiteralPath $path -Value $content -Encoding utf8 -NoNewline
-
-      - name: Commit fix to branch
-        shell: pwsh
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add native/VMWV.App/ViewModels/MainPageViewModel.cs
-          git commit -m "Reduce fallback audio polling frequency"
-          git push origin HEAD:agent/stop-audio-endpoint-refresh-churn
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v4
@@ -77,9 +25,23 @@ jobs:
 
       - name: Build portable EXE and MSI
         shell: pwsh
-        run: ./scripts/build-release.ps1 -Platform x64
+        run: |
+          & ./scripts/build-release.ps1 -Platform x64 *>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: second-fix-build-log
+          path: build.log
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload replacement builds
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Voicemeeter-Windows-Volume-Modern-second-fix-x64
