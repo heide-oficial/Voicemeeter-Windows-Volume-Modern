@@ -23,19 +23,29 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Compile application
+      - name: Publish runnable x64 application
         shell: pwsh
-        run: dotnet build native/VMWV.App/VMWV.App.csproj -c Release -p:Platform=x64 -p:WindowsPackageType=None -v:minimal
+        run: |
+          dotnet publish native/VMWV.App/VMWV.App.csproj `
+            -c Release `
+            -r win-x64 `
+            -p:Platform=x64 `
+            -p:WindowsPackageType=None `
+            -p:WindowsAppSDKSelfContained=true `
+            -p:SelfContained=true `
+            -p:PublishSingleFile=false `
+            -p:PublishTrimmed=false `
+            -o artifacts/second-fix-app
 
-      - name: Build portable x64 executable
-        shell: pwsh
-        run: ./scripts/build-release.ps1 -Platform x64 -SkipSetup
+          if (-not (Test-Path artifacts/second-fix-app/VMWV.App.exe)) {
+              throw "Publish did not create VMWV.App.exe"
+          }
 
-      - name: Upload replacement portable build
+      - name: Upload runnable replacement build
         uses: actions/upload-artifact@v4
         with:
-          name: Voicemeeter-Windows-Volume-Modern-second-fix-portable-x64
-          path: artifacts/release/VoicemeeterWindowsVolumeModern-Portable-x64.exe
+          name: Voicemeeter-Windows-Volume-Modern-second-fix-x64
+          path: artifacts/second-fix-app
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
