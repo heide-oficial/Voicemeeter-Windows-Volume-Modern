@@ -14,6 +14,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private const int MaxDiagnosticEntries = 200;
     private const int MaxRecentEventEntries = 8;
     private static readonly TimeSpan SettingsSaveDebounceDelay = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan FallbackPollingInterval = TimeSpan.FromSeconds(5);
     private readonly JsonSettingsStore _settingsStore;
     private readonly IAudioEndpointService _audioEndpointService;
     private readonly IVoicemeeterClient _voicemeeterClient;
@@ -40,7 +41,6 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private bool _volumeSyncWorkerRunning;
     private bool _muteSyncWorkerRunning;
     private CancellationTokenSource? _deviceRecoveryDebounce;
-    private DateTimeOffset _lastAudioCallback = DateTimeOffset.MinValue;
     private int _lastObservedVolume;
     private bool _lastObservedMute;
 
@@ -780,7 +780,6 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
 
         _fallbackPollingStarted = true;
-        _lastAudioCallback = DateTimeOffset.Now;
         _ = PollAudioFallbackAsync();
     }
 
@@ -788,14 +787,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     {
         while (!_shutdown.IsCancellationRequested)
         {
-            var delay = TimeSpan.FromMilliseconds(Math.Clamp((int)Math.Round(PollingRate), 25, 10_000));
             try
             {
-                await Task.Delay(delay, _shutdown.Token);
-                if (DateTimeOffset.Now - _lastAudioCallback < TimeSpan.FromSeconds(5))
-                {
-                    continue;
-                }
+                await Task.Delay(FallbackPollingInterval, _shutdown.Token);
 
                 await _audioEndpointService.RefreshAsync(_shutdown.Token);
                 var snapshot = _audioEndpointService.Current;
@@ -1004,7 +998,6 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private void OnAudioVolumeChanged(object? sender, AudioVolumeChangedEventArgs args)
     {
-        _lastAudioCallback = DateTimeOffset.Now;
         _lastObservedVolume = args.NewVolume;
         if (RememberVolume)
         {
@@ -1024,7 +1017,6 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private void OnAudioMuteChanged(object? sender, AudioMuteChangedEventArgs args)
     {
-        _lastAudioCallback = DateTimeOffset.Now;
         _lastObservedMute = args.IsMuted;
         RunOnUiThread(() =>
         {
