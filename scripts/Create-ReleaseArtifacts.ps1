@@ -12,11 +12,13 @@ $rid = "win-$($Platform.ToLowerInvariant())"
 $appProject = Join-Path $repoRoot "native\VMWV.App\VMWV.App.csproj"
 $portableProject = Join-Path $repoRoot "native\VMWV.Portable\VMWV.Portable.csproj"
 $installerProject = Join-Path $repoRoot "native\VMWV.Installer\VMWV.Installer.wixproj"
+$nativeHostSource = Join-Path $repoRoot "native\VMWV.NativeHost"
 $installerGeneratedFiles = Join-Path $repoRoot "native\VMWV.Installer\GeneratedFiles.wxs"
 $artifactRoot = Join-Path $repoRoot "artifacts\release"
 $publishRoot = Join-Path $artifactRoot "publish-$rid"
 $portablePublishRoot = Join-Path $artifactRoot "portable-publish-$rid"
 $installerBuildRoot = Join-Path $artifactRoot "installer-build-$rid"
+$nativeHostBuildRoot = Join-Path $artifactRoot "native-host-build-$rid"
 $payloadZip = Join-Path $artifactRoot "payload-$rid.zip"
 $portableExe = Join-Path $artifactRoot "VoicemeeterWindowsVolumeModern-Portable-$Platform.exe"
 $setupMsi = Join-Path $artifactRoot "VoicemeeterWindowsVolumeModern-Setup-$Platform.msi"
@@ -36,6 +38,7 @@ Assert-InRepo $artifactRoot
 Assert-InRepo $publishRoot
 Assert-InRepo $portablePublishRoot
 Assert-InRepo $installerBuildRoot
+Assert-InRepo $nativeHostBuildRoot
 Assert-InRepo $installerGeneratedFiles
 Assert-InRepo $payloadZip
 Assert-InRepo $portableExe
@@ -46,6 +49,7 @@ New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
 Remove-Item -LiteralPath $publishRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $portablePublishRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $installerBuildRoot -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $nativeHostBuildRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $installerGeneratedFiles -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $payloadZip -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $portableExe -Force -ErrorAction SilentlyContinue
@@ -151,6 +155,24 @@ if (-not (Test-Path $publishedApp)) {
     throw "App publish did not create $publishedApp"
 }
 
+$cmakeArchitecture = if ($Platform -eq "ARM64") { "ARM64" } else { "x64" }
+cmake -S $nativeHostSource -B $nativeHostBuildRoot -A $cmakeArchitecture
+if ($LASTEXITCODE -ne 0) {
+    throw "CMake configuration for the native host failed with exit code $LASTEXITCODE."
+}
+
+cmake --build $nativeHostBuildRoot --config Release
+if ($LASTEXITCODE -ne 0) {
+    throw "Native host build failed with exit code $LASTEXITCODE."
+}
+
+$builtNativeHost = Get-ChildItem -LiteralPath $nativeHostBuildRoot -Filter "VMWV.NativeHost.exe" -File -Recurse |
+    Select-Object -First 1
+if ($null -eq $builtNativeHost) {
+    throw "Native host build did not create VMWV.NativeHost.exe."
+}
+
+Copy-Item -LiteralPath $builtNativeHost.FullName -Destination (Join-Path $publishRoot "VMWV.NativeHost.exe") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination (Join-Path $publishRoot "LICENSE.txt") -Force
 Compress-Archive -Path (Join-Path $publishRoot "*") -DestinationPath $payloadZip -Force
 

@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window
     private string _brandVariant;
     private nint _oldWindowProc;
     private uint _taskbarCreatedMessage;
+    private readonly bool _settingsOnly;
     private bool _closeToTray;
     private bool _exitRequested;
     private bool _trayIconVisible;
@@ -97,9 +98,10 @@ public sealed partial class MainWindow : Window
         _windowProc = WndProc;
         _oldWindowProc = SetWindowLongPtrW(_hwnd, GwlWndProc, Marshal.GetFunctionPointerForDelegate(_windowProc));
         _taskbarCreatedMessage = RegisterWindowMessageW("TaskbarCreated");
+        _settingsOnly = App.IsSettingsOnlyLaunch;
         var settings = ReadWindowSettings();
         _brandVariant = settings.LogoVariant;
-        _closeToTray = settings.CloseToTray;
+        _closeToTray = !_settingsOnly && settings.CloseToTray;
         _brandIconPath = ResolveBrandIconPath(_brandVariant);
 
         ExtendsContentIntoTitleBar = true;
@@ -143,7 +145,7 @@ public sealed partial class MainWindow : Window
 
     public void SetCloseToTray(bool value)
     {
-        _closeToTray = value;
+        _closeToTray = !_settingsOnly && value;
     }
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)

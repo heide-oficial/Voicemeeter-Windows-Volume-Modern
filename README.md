@@ -10,7 +10,7 @@ This project is a Windows-focused rewrite of the original [Frosthaven/voicemeete
 
 ## What Voicemeeter Windows Volume Modern Is
 
-Voicemeeter Windows Volume Modern is a desktop utility for Windows 10/11. It runs as a native WinUI 3 app, monitors the current Windows default audio endpoint, and applies matching volume or mute changes to Voicemeeter Remote targets.
+Voicemeeter Windows Volume Modern is a desktop utility for Windows 10/11. A small native Win32 host monitors the current Windows default audio endpoint and applies matching volume or mute changes to Voicemeeter Remote targets. The WinUI 3 interface is launched only when settings or diagnostics are opened.
 
 The app is not a replacement for Voicemeeter. It is a companion app that keeps selected Voicemeeter strips and buses aligned with Windows volume behavior.
 
@@ -23,7 +23,8 @@ The app is not a replacement for Voicemeeter. It is a companion app that keeps s
 
 ## Improvements
 
-- Moves the app from a legacy Node.js tray process to a native C#/.NET Windows app.
+- Moves the always-running work from a legacy Node.js tray process to a small native Win32 host.
+- Keeps the WinUI 3 settings and diagnostics shell out of memory until it is opened.
 - Replaces the old tray-menu-only experience with a full WinUI 3 shell for status, bindings, settings, diagnostics, and project information.
 - Replaces PowerShell-based audio scanning with native Windows Core Audio callbacks for normal volume, mute, and device-change monitoring.
 - Replaces the `ffi-napi`/Node native addon path with a native Voicemeeter Remote integration.
@@ -50,6 +51,7 @@ The app is not a replacement for Voicemeeter. It is a companion app that keeps s
 
 - Windows 10 version 1809 or newer.
 - .NET SDK 10.
+- Visual Studio C++ build tools and CMake for the native background host.
 - Windows App SDK build tooling.
 - Microsoft WinApp CLI for packaged development runs and UI smoke testing.
 - Voicemeeter installed and running for full manual validation.
@@ -57,6 +59,8 @@ The app is not a replacement for Voicemeeter. It is a companion app that keeps s
 ### Build the Windows Host
 
 ```powershell
+cmake -S native\VMWV.NativeHost -B artifacts\native-host -A x64
+cmake --build artifacts\native-host --config Debug
 rtk dotnet build native\VMWV.Core\VMWV.Core.csproj -c Debug
 rtk dotnet build native\VMWV.Infrastructure.Windows\VMWV.Infrastructure.Windows.csproj -c Debug
 ```
@@ -101,7 +105,8 @@ rtk powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Create-PortableR
 
 ### Project Layout
 
-- `native/VMWV.App` - WinUI 3 desktop app, navigation, tray integration, title bar, app icon handling, and single-instance activation.
+- `native/VMWV.NativeHost` - low-memory Win32 tray process, Core Audio callbacks, settings reload, and direct Voicemeeter Remote synchronization.
+- `native/VMWV.App` - on-demand WinUI 3 settings, diagnostics, navigation, and title bar.
 - `native/VMWV.Core` - settings, source-generated JSON persistence, volume mapping, and service contracts.
 - `native/VMWV.Infrastructure.Windows` - Windows Core Audio and Voicemeeter Remote integrations.
 - `native/VMWV.Core.Tests` - lightweight test runner for critical core behavior.

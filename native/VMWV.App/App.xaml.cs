@@ -18,6 +18,8 @@ public partial class App : Application
 {
     private const string MainInstanceKey = "VMWV_App_MainInstance";
 
+    public static bool IsSettingsOnlyLaunch { get; private set; }
+
     /// <summary>
     /// The main application window. Use <c>App.Window</c> from any class that needs
     /// the window reference (for dialogs, pickers, interop, etc.).
@@ -53,7 +55,9 @@ public partial class App : Application
     /// <param name="args">Details about the launch request and process.</param>
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
-        var isBackgroundLaunch = IsBackgroundLaunch(args.Arguments) || IsBackgroundCommandLine();
+        IsSettingsOnlyLaunch = IsSettingsOnly(args.Arguments) || IsSettingsOnlyCommandLine();
+        var isBackgroundLaunch = !IsSettingsOnlyLaunch
+            && (IsBackgroundLaunch(args.Arguments) || IsBackgroundCommandLine());
         var mainInstance = AppInstance.FindOrRegisterForKey(MainInstanceKey);
         if (!mainInstance.IsCurrent)
         {
@@ -101,6 +105,15 @@ public partial class App : Application
             }
         });
     }
+
+    private static bool IsSettingsOnly(string? arguments) =>
+        !string.IsNullOrWhiteSpace(arguments)
+        && arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(argument => argument.Equals("--settings-only", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsSettingsOnlyCommandLine() =>
+        Environment.GetCommandLineArgs().Skip(1)
+            .Any(argument => argument.Equals("--settings-only", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsBackgroundLaunch(string? arguments) =>
         !string.IsNullOrWhiteSpace(arguments)

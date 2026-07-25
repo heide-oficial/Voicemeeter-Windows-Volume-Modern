@@ -1,0 +1,4 @@
+#include "resource.h"
+#include <windows.h>
+
+IDI_APP_ICON ICON "../VMWV.App/Assets/AppIcon.ico"

@@ -34,7 +34,7 @@
         Id="StartMenuShortcut"
         Name="Voicemeeter Windows Volume Modern"
         Description="Launch Voicemeeter Windows Volume Modern"
-        Target="[APPLICATIONFOLDER]VMWV.App.exe"
+        Target="[APPLICATIONFOLDER]VMWV.NativeHost.exe"
         WorkingDirectory="APPLICATIONFOLDER"
         Icon="AppIcon.ico" />
       <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
@@ -52,7 +52,7 @@
         Id="DesktopShortcut"
         Name="Voicemeeter Windows Volume Modern"
         Description="Launch Voicemeeter Windows Volume Modern"
-        Target="[APPLICATIONFOLDER]VMWV.App.exe"
+        Target="[APPLICATIONFOLDER]VMWV.NativeHost.exe"
         WorkingDirectory="APPLICATIONFOLDER"
         Icon="AppIcon.ico" />
       <RegistryValue

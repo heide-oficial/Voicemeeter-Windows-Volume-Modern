@@ -9,6 +9,7 @@ public sealed class WindowsStartupService : IStartupService
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunValueName = "Voicemeeter Windows Volume Modern";
+    private const string NativeHostExeName = "VMWV.NativeHost.exe";
     private const string AppExeName = "VMWV.App.exe";
 
     public Task<StartupRegistrationState> GetStateAsync(CancellationToken cancellationToken)
@@ -60,6 +61,12 @@ public sealed class WindowsStartupService : IStartupService
         if (!string.IsNullOrWhiteSpace(portableLauncher) && File.Exists(portableLauncher))
         {
             return portableLauncher;
+        }
+
+        var nativeHostPath = Path.Combine(AppContext.BaseDirectory, NativeHostExeName);
+        if (File.Exists(nativeHostPath))
+        {
+            return nativeHostPath;
         }
 
         var appPath = Path.Combine(AppContext.BaseDirectory, AppExeName);
