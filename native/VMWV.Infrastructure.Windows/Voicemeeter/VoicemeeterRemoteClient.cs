@@ -320,15 +320,15 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
     {
         var label = _library.GetParameterString($"{kind}[{index}].Label");
         var deviceName = _library.GetParameterString($"{kind}[{index}].device.name");
-        var fallbackName = $"{kind} {index}";
-        var displayName = string.IsNullOrWhiteSpace(label) ? fallbackName : label;
+        // Keep the raw Voicemeeter label (may be empty). UI layer maps role names (A1, VAIO, …).
+        var friendlyName = string.IsNullOrWhiteSpace(label) ? string.Empty : label.Trim();
 
         return new VoicemeeterBindingTarget(
             $"{kind}_{index}",
             kind,
             index,
-            displayName,
-            string.IsNullOrWhiteSpace(deviceName) ? null : deviceName,
+            friendlyName,
+            string.IsNullOrWhiteSpace(deviceName) ? null : deviceName.Trim(),
             true);
     }
 

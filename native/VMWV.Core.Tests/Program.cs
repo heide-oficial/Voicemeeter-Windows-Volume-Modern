@@ -1,5 +1,6 @@
 using System.Text.Json;
 using VMWV.Core.Settings;
+using VMWV.Core.Voicemeeter;
 using VMWV.Core.Volume;
 
 var tests = new List<(string Name, Action Test)>
@@ -7,6 +8,37 @@ var tests = new List<(string Name, Action Test)>
     ("linear scale maps 0 to min", () =>
     {
         AssertEqual(-60d, VolumeMapper.ToVoicemeeterGain(0, -60, 12, false, true));
+    }),
+    ("banana bus 0 is A1", () =>
+    {
+        AssertEqual("A1", VoicemeeterChannelNames.GetRoleName("Voicemeeter Banana", "Bus", 0));
+        AssertEqual("Bus 0", VoicemeeterChannelNames.GetIndexCaption("Bus", 0));
+    }),
+    ("potato bus 5 is B1", () =>
+    {
+        AssertEqual("B1", VoicemeeterChannelNames.GetRoleName("Voicemeeter Potato", "Bus", 5));
+    }),
+    ("display prefers custom label with A1 detail", () =>
+    {
+        var (title, detail) = VoicemeeterChannelNames.FormatDisplay(
+            "Voicemeeter Banana",
+            "Bus",
+            0,
+            customLabel: "Headphones",
+            deviceName: null);
+        AssertEqual("Headphones", title);
+        AssertEqual("A1 · Bus 0", detail);
+    }),
+    ("display uses A1 when no custom label", () =>
+    {
+        var (title, detail) = VoicemeeterChannelNames.FormatDisplay(
+            "Voicemeeter Banana",
+            "Bus",
+            0,
+            customLabel: null,
+            deviceName: "Speakers");
+        AssertEqual("A1", title);
+        AssertEqual("Bus 0 · Speakers", detail);
     }),
     ("linear scale respects zero dB limit", () =>
     {

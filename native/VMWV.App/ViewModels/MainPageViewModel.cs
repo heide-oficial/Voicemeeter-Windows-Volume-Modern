@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml.Controls;
 using VMWV.Core.Services;
 using VMWV.Core.Settings;
+using VMWV.Core.Voicemeeter;
 using VMWV.Core.Volume;
 using VMWV_App.Models;
 
@@ -541,14 +542,29 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         BindingTargets.Clear();
         StripBindingTargets.Clear();
         BusBindingTargets.Clear();
+
+        // Offline placeholders use Potato layout (max channels); labels are role-based (A1, VAIO, …).
+        const string offlineEdition = "Voicemeeter Potato";
         for (var index = 0; index <= 7; index++)
         {
-            AddBindingTarget($"Strip_{index}", $"Input Strip {index}", "Voicemeeter strip", "\uE8D6", "Input strip");
+            var (title, detail) = VoicemeeterChannelNames.FormatDisplay(
+                offlineEdition,
+                "Strip",
+                index,
+                customLabel: null,
+                deviceName: null);
+            AddBindingTarget($"Strip_{index}", title, detail, "\uE8D6", "Input strip");
         }
 
         for (var index = 0; index <= 7; index++)
         {
-            AddBindingTarget($"Bus_{index}", $"Output Bus {index}", "Voicemeeter bus", "\uE9D9", "Output bus");
+            var (title, detail) = VoicemeeterChannelNames.FormatDisplay(
+                offlineEdition,
+                "Bus",
+                index,
+                customLabel: null,
+                deviceName: null);
+            AddBindingTarget($"Bus_{index}", title, detail, "\uE9D9", "Output bus");
         }
 
         UpdateBindingTargetAvailability();
@@ -562,13 +578,21 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         StripBindingTargets.Clear();
         BusBindingTargets.Clear();
 
+        var edition = _voicemeeterClient.Edition;
         foreach (var target in targets.OrderBy(target => target.Kind).ThenBy(target => target.Index))
         {
             var isStrip = target.Kind.Equals("Strip", StringComparison.OrdinalIgnoreCase);
+            var (title, detail) = VoicemeeterChannelNames.FormatDisplay(
+                edition,
+                target.Kind,
+                target.Index,
+                target.FriendlyName,
+                target.DeviceName);
+
             AddBindingTarget(
                 target.Id,
-                target.FriendlyName,
-                isStrip ? "Voicemeeter strip" : "Voicemeeter bus",
+                title,
+                detail,
                 isStrip ? "\uE8D6" : "\uE9D9",
                 isStrip ? "Input strip" : "Output bus");
         }
@@ -1368,9 +1392,13 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             _selectedTargets = selectedTargets;
         }
 
-        ActiveTargetsText = selectedTargets.Count == 0
+        var activeNames = BindingTargets
+            .Where(item => item.IsEnabled)
+            .Select(item => item.Name)
+            .ToList();
+        ActiveTargetsText = activeNames.Count == 0
             ? "No active targets"
-            : string.Join(", ", selectedTargets.Select(target => target.FriendlyName));
+            : string.Join(", ", activeNames);
     }
 
     private async Task EnsureVoicemeeterConnectedAsync()
