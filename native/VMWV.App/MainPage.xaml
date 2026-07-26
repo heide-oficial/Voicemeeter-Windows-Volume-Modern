@@ -979,7 +979,7 @@
                             <Grid ColumnSpacing="16">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="Protection" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE83D;" />
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="Prevent sudden 100% volume spikes" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Avoid unexpected maximum-volume recovery states." /></StackPanel>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="Prevent sudden 100% volume spikes" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Revert unexpected 100% jumps after device changes. Engine restarts always restore the last safe level." /></StackPanel>
                                 <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.PreventVolumeSpikes), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglPreventVolumeSpikes" IsOn="{x:Bind ViewModel.PreventVolumeSpikes, Mode=TwoWay}" /></StackPanel>
                             </Grid>
                         </Border>

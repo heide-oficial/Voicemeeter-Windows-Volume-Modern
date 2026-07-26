@@ -14,6 +14,11 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private const int MaxDiagnosticEntries = 200;
     private const int MaxRecentEventEntries = 8;
     private static readonly TimeSpan SettingsSaveDebounceDelay = TimeSpan.FromMilliseconds(250);
+    // Windows/driver anomaly: Voicemeeter engine restarts and some device changes briefly force the
+    // default endpoint to 100%. A genuine user move to 100% usually arrives with recent intermediate
+    // volume events; a sudden jump after a quiet period is treated as a spike when the toggle is on.
+    private static readonly TimeSpan VolumeSpikeQuietPeriod = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan PostEngineRestartSettleDelay = TimeSpan.FromMilliseconds(400);
     private readonly JsonSettingsStore _settingsStore;
     private readonly IAudioEndpointService _audioEndpointService;
     private readonly IVoicemeeterClient _voicemeeterClient;
@@ -41,7 +46,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private bool _muteSyncWorkerRunning;
     private CancellationTokenSource? _deviceRecoveryDebounce;
     private DateTimeOffset _lastAudioCallback = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastVolumeChangeTime = DateTimeOffset.MinValue;
     private int _lastObservedVolume;
+    private int? _stableVolume;
+    private int _volumeRestoreInProgress;
     private bool _lastObservedMute;
 
     public MainPageViewModel(
@@ -213,8 +221,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         try
         {
             await _audioEndpointService.StartAsync(_shutdown.Token);
+            await ApplyRememberedWindowsVolumeIfNeededAsync();
             ApplyAudioSnapshot(_audioEndpointService.Current);
-            _lastObservedVolume = _audioEndpointService.Current.Volume;
+            SeedStableVolumeFromCurrentEndpoint();
+            _lastVolumeChangeTime = DateTimeOffset.Now;
             _lastObservedMute = _audioEndpointService.Current.IsMuted;
             StartFallbackPolling();
             StatusTitle = "Windows audio connected";
@@ -293,7 +303,6 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
             await _voicemeeterClient.ConnectAsync(_shutdown.Token);
             await RefreshVoicemeeterTargetsAsync();
-            QueueCurrentAudioSync();
 
             VoicemeeterStatus = "Connected";
             VoicemeeterDetail = _voicemeeterClient.Edition;
@@ -307,8 +316,14 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             if (!_restartOnLaunchApplied && _settings.IsToggleEnabled("restart_audio_engine_on_app_launch"))
             {
                 _restartOnLaunchApplied = true;
+                var volumeBeforeRestart = ResolveStableWindowsVolume();
                 await _voicemeeterClient.RestartAudioEngineAsync(_shutdown.Token);
                 AddLog("Voicemeeter", "Restart audio engine on app launch applied.");
+                await ReconcileVolumeAfterEngineRestartAsync(volumeBeforeRestart);
+            }
+            else
+            {
+                QueueCurrentAudioSync();
             }
         }
         catch (OperationCanceledException)
@@ -398,8 +413,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         try
         {
             await EnsureVoicemeeterConnectedAsync();
+            var volumeBeforeRestart = ResolveStableWindowsVolume();
             await _voicemeeterClient.RestartAudioEngineAsync(_shutdown.Token);
             AddLog("Voicemeeter", "Restart audio engine command sent.");
+            await ReconcileVolumeAfterEngineRestartAsync(volumeBeforeRestart);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -1005,7 +1022,29 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private void OnAudioVolumeChanged(object? sender, AudioVolumeChangedEventArgs args)
     {
         _lastAudioCallback = DateTimeOffset.Now;
+
+        // Ignore the synthetic notification from our own spike restore write.
+        if (Volatile.Read(ref _volumeRestoreInProgress) > 0 && args.NewVolume == _stableVolume)
+        {
+            _lastObservedVolume = args.NewVolume;
+            _lastVolumeChangeTime = DateTimeOffset.Now;
+            RunOnUiThread(() =>
+            {
+                WindowsAudioStatus = $"{args.NewVolume}%";
+                WindowsAudioDetail = _audioEndpointService.Current.DisplayName;
+            });
+            return;
+        }
+
+        if (TryHandleSuddenMaxVolumeSpike(args.OldVolume, args.NewVolume))
+        {
+            return;
+        }
+
         _lastObservedVolume = args.NewVolume;
+        _stableVolume = args.NewVolume;
+        _lastVolumeChangeTime = DateTimeOffset.Now;
+
         if (RememberVolume)
         {
             _settings.InitialVolume = args.NewVolume;
@@ -1065,12 +1104,16 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             RunOnUiThread(() => AddLog("Audio", $"Failed to refresh endpoint after resume: {ex.Message}"));
         }
 
-        if (RestartOnResume)
+        _manualDisconnectRequested = false;
+
+        // Restart path already reconciles volume and re-syncs. Avoid a second QueueCurrentAudioSync
+        // that can re-read a transient 100% endpoint and blast Voicemeeter again.
+        if (RestartOnResume && _voicemeeterClient.State == VoicemeeterConnectionState.Connected)
         {
             await RestartAudioEngineAsync();
+            return;
         }
 
-        _manualDisconnectRequested = false;
         RequestVoicemeeterRecovery();
         QueueCurrentAudioSync();
     }
@@ -1099,8 +1142,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
             if (_voicemeeterClient.State == VoicemeeterConnectionState.Connected)
             {
+                // RestartAudioEngineAsync already reconciles volume spikes and re-syncs.
                 await RestartAudioEngineAsync();
-                QueueCurrentAudioSync();
             }
             else
             {
@@ -1404,10 +1447,206 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        QueueVolumeSync(snapshot.Volume);
+        var volume = snapshot.Volume;
+        // Only auto-correct a 100% snapshot when spike protection is on and we still know a
+        // lower "last good" level. Engine-restart reconciliation has its own always-on path.
+        if (PreventVolumeSpikes
+            && volume == 100
+            && ResolveStableWindowsVolume() is int stable)
+        {
+            _ = RestoreWindowsVolumeAsync(stable, "sync snapshot", syncToVoicemeeter: true);
+            if (SyncMute)
+            {
+                QueueMuteSync(snapshot.IsMuted);
+            }
+
+            return;
+        }
+
+        QueueVolumeSync(volume);
         if (SyncMute)
         {
             QueueMuteSync(snapshot.IsMuted);
+        }
+    }
+
+    /// <summary>
+    /// Detects sudden 100% endpoint spikes (common after Voicemeeter engine restarts) and restores
+    /// the previous level without pushing 100% into Voicemeeter. Matches the original app's
+    /// <c>apply_volume_fix</c> behavior, but skips the Voicemeeter write for the bad sample.
+    /// </summary>
+    private bool TryHandleSuddenMaxVolumeSpike(int oldVolume, int newVolume)
+    {
+        if (!PreventVolumeSpikes || newVolume != 100)
+        {
+            return false;
+        }
+
+        var timeSinceLastChange = DateTimeOffset.Now - _lastVolumeChangeTime;
+        if (_lastVolumeChangeTime != DateTimeOffset.MinValue
+            && timeSinceLastChange < VolumeSpikeQuietPeriod)
+        {
+            // Recent intermediate changes — treat as a user/slider move to 100%.
+            return false;
+        }
+
+        var restoreTo = oldVolume is >= 0 and < 100
+            ? oldVolume
+            : ResolveStableWindowsVolume();
+        if (restoreTo is null or < 0 or >= 100)
+        {
+            return false;
+        }
+
+        AddLog(
+            "Audio",
+            $"Volume spike detected: jumped to 100% from {restoreTo}% after {timeSinceLastChange.TotalMilliseconds:0}ms quiet. Restoring {restoreTo}%.");
+        _ = RestoreWindowsVolumeAsync(restoreTo.Value, "sudden 100% spike", syncToVoicemeeter: true);
+        return true;
+    }
+
+    private int? ResolveStableWindowsVolume()
+    {
+        if (_stableVolume is int stable && stable is >= 0 and < 100)
+        {
+            return stable;
+        }
+
+        if (_lastObservedVolume is >= 0 and < 100)
+        {
+            return _lastObservedVolume;
+        }
+
+        if (RememberVolume && _settings.InitialVolume is int remembered && remembered is >= 0 and < 100)
+        {
+            return remembered;
+        }
+
+        return null;
+    }
+
+    private void SeedStableVolumeFromCurrentEndpoint()
+    {
+        var current = _audioEndpointService.Current.Volume;
+        _lastObservedVolume = current;
+        // Prefer a remembered non-100 level when the endpoint boots already maxed out.
+        if (current == 100
+            && RememberVolume
+            && _settings.InitialVolume is int remembered
+            && remembered is >= 0 and < 100)
+        {
+            _stableVolume = remembered;
+            return;
+        }
+
+        _stableVolume = current;
+    }
+
+    private async Task ApplyRememberedWindowsVolumeIfNeededAsync()
+    {
+        if (!RememberVolume
+            || _settings.InitialVolume is not int remembered
+            || remembered is < 0 or > 100
+            || _audioEndpointService.Current.DeviceId.Length == 0)
+        {
+            return;
+        }
+
+        // Only correct the common post-boot / post-restart 100% reset. Leave other levels alone.
+        if (_audioEndpointService.Current.Volume != 100 || remembered == 100)
+        {
+            return;
+        }
+
+        await RestoreWindowsVolumeAsync(remembered, "remembered volume on startup", syncToVoicemeeter: false);
+    }
+
+    private async Task ReconcileVolumeAfterEngineRestartAsync(int? volumeBeforeRestart)
+    {
+        try
+        {
+            await Task.Delay(PostEngineRestartSettleDelay, _shutdown.Token);
+            await _audioEndpointService.RefreshAsync(_shutdown.Token);
+            var current = _audioEndpointService.Current;
+            RunOnUiThread(() => ApplyAudioSnapshot(current));
+
+            var preferred = volumeBeforeRestart is >= 0 and < 100
+                ? volumeBeforeRestart
+                : ResolveStableWindowsVolume();
+
+            // Engine restart frequently recreates Voicemeeter VAIO endpoints at 100%. Always
+            // re-apply the pre-restart level when we still know a safe volume — this is independent
+            // of the general "prevent spikes" toggle used for unexpected device events.
+            if (current.DeviceId.Length > 0
+                && current.Volume == 100
+                && preferred is int restoreTo
+                && restoreTo is >= 0 and < 100)
+            {
+                await RestoreWindowsVolumeAsync(restoreTo, "engine restart", syncToVoicemeeter: true);
+            }
+            else if (current.DeviceId.Length > 0)
+            {
+                if (current.Volume < 100)
+                {
+                    _stableVolume = current.Volume;
+                    _lastObservedVolume = current.Volume;
+                }
+
+                QueueVolumeSync(current.Volume);
+            }
+            else
+            {
+                QueueCurrentAudioSync();
+            }
+
+            if (SyncMute && current.DeviceId.Length > 0)
+            {
+                QueueMuteSync(current.IsMuted);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            AddLog("Audio", $"Post-engine-restart volume reconcile failed: {ex.Message}");
+            QueueCurrentAudioSync();
+        }
+    }
+
+    private async Task RestoreWindowsVolumeAsync(int volume, string reason, bool syncToVoicemeeter)
+    {
+        var normalized = Math.Clamp(volume, 0, 100);
+        Interlocked.Increment(ref _volumeRestoreInProgress);
+        try
+        {
+            await _audioEndpointService.SetVolumeAsync(normalized, _shutdown.Token);
+            _lastObservedVolume = normalized;
+            _stableVolume = normalized;
+            _lastVolumeChangeTime = DateTimeOffset.Now;
+            RunOnUiThread(() =>
+            {
+                WindowsAudioStatus = $"{normalized}%";
+                WindowsAudioDetail = _audioEndpointService.Current.DisplayName;
+                AddLog("Audio", $"Restored Windows volume to {normalized}% ({reason}).");
+            });
+
+            if (syncToVoicemeeter)
+            {
+                // Sync the restored level so Voicemeeter never keeps a transient 100% write.
+                QueueVolumeSync(normalized);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            AddLog("Audio", $"Failed to restore Windows volume to {normalized}% ({reason}): {ex.Message}");
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _volumeRestoreInProgress);
         }
     }
 
