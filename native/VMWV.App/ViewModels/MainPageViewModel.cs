@@ -17,8 +17,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     // Windows/driver anomaly: Voicemeeter engine restarts and some device changes briefly force the
     // default endpoint to 100%. A genuine user move to 100% usually arrives with recent intermediate
     // volume events; a sudden jump after a quiet period is treated as a spike when the toggle is on.
+    // Engine restarts always arm a short guard so boot/launch restart cannot save or sync 100%.
     private static readonly TimeSpan VolumeSpikeQuietPeriod = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan PostEngineRestartSettleDelay = TimeSpan.FromMilliseconds(400);
+    private static readonly TimeSpan PostEngineRestartSettleDelay = TimeSpan.FromMilliseconds(800);
+    private static readonly TimeSpan EngineRestartGuardDuration = TimeSpan.FromSeconds(3);
     private readonly JsonSettingsStore _settingsStore;
     private readonly IAudioEndpointService _audioEndpointService;
     private readonly IVoicemeeterClient _voicemeeterClient;
@@ -47,10 +49,14 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private CancellationTokenSource? _deviceRecoveryDebounce;
     private DateTimeOffset _lastAudioCallback = DateTimeOffset.MinValue;
     private DateTimeOffset _lastVolumeChangeTime = DateTimeOffset.MinValue;
+    private DateTimeOffset _engineRestartGuardUntil = DateTimeOffset.MinValue;
     private int _lastObservedVolume;
     private int? _stableVolume;
+    private int? _guardedRestartVolume;
     private int _volumeRestoreInProgress;
     private bool _lastObservedMute;
+
+    private bool IsEngineRestartGuardActive => DateTimeOffset.Now < _engineRestartGuardUntil;
 
     public MainPageViewModel(
         IAudioEndpointService audioEndpointService,
@@ -316,7 +322,11 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             if (!_restartOnLaunchApplied && _settings.IsToggleEnabled("restart_audio_engine_on_app_launch"))
             {
                 _restartOnLaunchApplied = true;
-                var volumeBeforeRestart = ResolveStableWindowsVolume();
+                var volumeBeforeRestart = ResolveStableWindowsVolume()
+                    ?? (_audioEndpointService.Current.Volume is >= 0 and < 100
+                        ? _audioEndpointService.Current.Volume
+                        : null);
+                BeginEngineRestartGuard(volumeBeforeRestart);
                 await _voicemeeterClient.RestartAudioEngineAsync(_shutdown.Token);
                 AddLog("Voicemeeter", "Restart audio engine on app launch applied.");
                 await ReconcileVolumeAfterEngineRestartAsync(volumeBeforeRestart);
@@ -413,7 +423,11 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         try
         {
             await EnsureVoicemeeterConnectedAsync();
-            var volumeBeforeRestart = ResolveStableWindowsVolume();
+            var volumeBeforeRestart = ResolveStableWindowsVolume()
+                ?? (_audioEndpointService.Current.Volume is >= 0 and < 100
+                    ? _audioEndpointService.Current.Volume
+                    : null);
+            BeginEngineRestartGuard(volumeBeforeRestart);
             await _voicemeeterClient.RestartAudioEngineAsync(_shutdown.Token);
             AddLog("Voicemeeter", "Restart audio engine command sent.");
             await ReconcileVolumeAfterEngineRestartAsync(volumeBeforeRestart);
@@ -1024,7 +1038,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _lastAudioCallback = DateTimeOffset.Now;
 
         // Ignore the synthetic notification from our own spike restore write.
-        if (Volatile.Read(ref _volumeRestoreInProgress) > 0 && args.NewVolume == _stableVolume)
+        if (Volatile.Read(ref _volumeRestoreInProgress) > 0
+            && (_stableVolume is int stable && args.NewVolume == stable
+                || _guardedRestartVolume is int guarded && args.NewVolume == guarded))
         {
             _lastObservedVolume = args.NewVolume;
             _lastVolumeChangeTime = DateTimeOffset.Now;
@@ -1042,10 +1058,15 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
 
         _lastObservedVolume = args.NewVolume;
-        _stableVolume = args.NewVolume;
+        // Never let a post-restart 100% overwrite the last safe level we plan to restore.
+        if (!(args.NewVolume == 100 && IsEngineRestartGuardActive))
+        {
+            _stableVolume = args.NewVolume;
+        }
+
         _lastVolumeChangeTime = DateTimeOffset.Now;
 
-        if (RememberVolume)
+        if (RememberVolume && !IsSuspiciousMaxVolume(args.OldVolume, args.NewVolume))
         {
             _settings.InitialVolume = args.NewVolume;
             QueueSettingsSave(_settingsStore.CreateSavePayload(_settings));
@@ -1470,43 +1491,99 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private void BeginEngineRestartGuard(int? volumeBeforeRestart)
+    {
+        var pinned = volumeBeforeRestart is >= 0 and < 100
+            ? volumeBeforeRestart
+            : ResolveStableWindowsVolume();
+        _guardedRestartVolume = pinned;
+        _engineRestartGuardUntil = DateTimeOffset.Now + EngineRestartGuardDuration;
+        if (pinned is int safe)
+        {
+            // Pin stable volume so a transient 100% callback cannot become the new baseline.
+            _stableVolume = safe;
+            _lastObservedVolume = safe;
+        }
+
+        AddLog(
+            "Audio",
+            pinned is int volume
+                ? $"Engine restart guard armed; holding {volume}% for {EngineRestartGuardDuration.TotalSeconds:0.#}s."
+                : "Engine restart guard armed without a pinned volume.");
+    }
+
     /// <summary>
-    /// Detects sudden 100% endpoint spikes (common after Voicemeeter engine restarts) and restores
-    /// the previous level without pushing 100% into Voicemeeter. Matches the original app's
-    /// <c>apply_volume_fix</c> behavior, but skips the Voicemeeter write for the bad sample.
+    /// Detects 100% endpoint spikes (especially after Voicemeeter engine restarts) and restores
+    /// the previous level without pushing 100% into Voicemeeter or saving it as remembered volume.
     /// </summary>
     private bool TryHandleSuddenMaxVolumeSpike(int oldVolume, int newVolume)
     {
-        if (!PreventVolumeSpikes || newVolume != 100)
+        if (newVolume != 100)
         {
             return false;
         }
 
+        var inGuard = IsEngineRestartGuardActive;
         var timeSinceLastChange = DateTimeOffset.Now - _lastVolumeChangeTime;
-        if (_lastVolumeChangeTime != DateTimeOffset.MinValue
-            && timeSinceLastChange < VolumeSpikeQuietPeriod)
+
+        // Outside the restart guard, only the optional spike toggle reverts quiet-period jumps.
+        if (!inGuard)
         {
-            // Recent intermediate changes — treat as a user/slider move to 100%.
-            return false;
+            if (!PreventVolumeSpikes)
+            {
+                return false;
+            }
+
+            if (_lastVolumeChangeTime != DateTimeOffset.MinValue
+                && timeSinceLastChange < VolumeSpikeQuietPeriod)
+            {
+                // Recent intermediate changes — treat as a user/slider move to 100%.
+                return false;
+            }
         }
 
-        var restoreTo = oldVolume is >= 0 and < 100
-            ? oldVolume
-            : ResolveStableWindowsVolume();
+        var restoreTo = _guardedRestartVolume is >= 0 and < 100
+            ? _guardedRestartVolume
+            : oldVolume is >= 0 and < 100
+                ? oldVolume
+                : ResolveStableWindowsVolume();
         if (restoreTo is null or < 0 or >= 100)
         {
             return false;
         }
 
+        var reason = inGuard ? "engine restart guard" : "sudden 100% spike";
         AddLog(
             "Audio",
-            $"Volume spike detected: jumped to 100% from {restoreTo}% after {timeSinceLastChange.TotalMilliseconds:0}ms quiet. Restoring {restoreTo}%.");
-        _ = RestoreWindowsVolumeAsync(restoreTo.Value, "sudden 100% spike", syncToVoicemeeter: true);
+            $"Volume spike blocked: 100% from {restoreTo}% ({reason}). Restoring {restoreTo}%.");
+        _ = RestoreWindowsVolumeAsync(restoreTo.Value, reason, syncToVoicemeeter: true);
         return true;
+    }
+
+    private bool IsSuspiciousMaxVolume(int oldVolume, int newVolume)
+    {
+        if (newVolume != 100 || oldVolume >= 100)
+        {
+            return false;
+        }
+
+        if (IsEngineRestartGuardActive)
+        {
+            return true;
+        }
+
+        var timeSinceLastChange = DateTimeOffset.Now - _lastVolumeChangeTime;
+        return _lastVolumeChangeTime == DateTimeOffset.MinValue
+            || timeSinceLastChange >= VolumeSpikeQuietPeriod;
     }
 
     private int? ResolveStableWindowsVolume()
     {
+        if (_guardedRestartVolume is int guarded && guarded is >= 0 and < 100 && IsEngineRestartGuardActive)
+        {
+            return guarded;
+        }
+
         if (_stableVolume is int stable && stable is >= 0 and < 100)
         {
             return stable;
@@ -1572,17 +1649,26 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
             var preferred = volumeBeforeRestart is >= 0 and < 100
                 ? volumeBeforeRestart
-                : ResolveStableWindowsVolume();
+                : _guardedRestartVolume is >= 0 and < 100
+                    ? _guardedRestartVolume
+                    : ResolveStableWindowsVolume();
 
-            // Engine restart frequently recreates Voicemeeter VAIO endpoints at 100%. Always
-            // re-apply the pre-restart level when we still know a safe volume — this is independent
-            // of the general "prevent spikes" toggle used for unexpected device events.
-            if (current.DeviceId.Length > 0
-                && current.Volume == 100
-                && preferred is int restoreTo
-                && restoreTo is >= 0 and < 100)
+            // Always re-apply the pre-restart level when known. Waiting only for current==100 is
+            // racy: the endpoint may still be missing, or a 100% sample may already have been
+            // written to Voicemeeter / remember-volume before this delay finishes.
+            if (preferred is int restoreTo && restoreTo is >= 0 and < 100)
             {
-                await RestoreWindowsVolumeAsync(restoreTo, "engine restart", syncToVoicemeeter: true);
+                if (current.DeviceId.Length == 0 || current.Volume != restoreTo)
+                {
+                    await RestoreWindowsVolumeAsync(restoreTo, "engine restart", syncToVoicemeeter: true);
+                }
+                else
+                {
+                    _stableVolume = restoreTo;
+                    _lastObservedVolume = restoreTo;
+                    QueueVolumeSync(restoreTo);
+                    AddLog("Audio", $"Post-restart volume already {restoreTo}%; re-synced to Voicemeeter.");
+                }
             }
             else if (current.DeviceId.Length > 0)
             {
@@ -1610,6 +1696,18 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         catch (Exception ex)
         {
             AddLog("Audio", $"Post-engine-restart volume reconcile failed: {ex.Message}");
+            if (_guardedRestartVolume is int fallback && fallback is >= 0 and < 100)
+            {
+                try
+                {
+                    await RestoreWindowsVolumeAsync(fallback, "engine restart fallback", syncToVoicemeeter: true);
+                    return;
+                }
+                catch
+                {
+                }
+            }
+
             QueueCurrentAudioSync();
         }
     }
