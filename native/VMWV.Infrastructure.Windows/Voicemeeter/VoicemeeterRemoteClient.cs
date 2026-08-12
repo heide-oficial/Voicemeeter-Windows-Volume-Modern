@@ -129,6 +129,7 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
         try
         {
             EnsureConnected();
+            await WaitForParametersReadyAsync(cancellationToken).ConfigureAwait(false);
 
             var targetCount = Edition switch
             {
@@ -321,15 +322,35 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
         var label = _library.GetParameterString($"{kind}[{index}].Label");
         var deviceName = _library.GetParameterString($"{kind}[{index}].device.name");
         var fallbackName = $"{kind} {index}";
-        var displayName = string.IsNullOrWhiteSpace(label) ? fallbackName : label;
+        var displayName = string.IsNullOrWhiteSpace(label) ? fallbackName : label.Trim();
 
         return new VoicemeeterBindingTarget(
             $"{kind}_{index}",
             kind,
             index,
             displayName,
-            string.IsNullOrWhiteSpace(deviceName) ? null : deviceName,
+            string.IsNullOrWhiteSpace(deviceName) ? null : deviceName.Trim(),
             true);
+    }
+
+    private async Task WaitForParametersReadyAsync(CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = _library.IsParametersDirty();
+            if (result == 0)
+            {
+                return;
+            }
+
+            if (result < 0)
+            {
+                throw new InvalidOperationException($"Unable to read Voicemeeter parameters. Code: {result}.");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private void EnsureConnected()
@@ -405,8 +426,9 @@ internal sealed class VoicemeeterRemoteLibrary : IDisposable
     private LoginDelegate? _login;
     private LogoutDelegate? _logout;
     private GetVoicemeeterTypeDelegate? _getVoicemeeterType;
+    private IsParametersDirtyDelegate? _isParametersDirty;
     private SetParameterFloatDelegate? _setParameterFloat;
-    private GetParameterStringDelegate? _getParameterString;
+    private GetParameterStringWDelegate? _getParameterStringW;
     private SetParametersDelegate? _setParameters;
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Ansi)]
@@ -418,11 +440,16 @@ internal sealed class VoicemeeterRemoteLibrary : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Ansi)]
     private delegate int GetVoicemeeterTypeDelegate(ref int voicemeeterType);
 
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int IsParametersDirtyDelegate();
+
     [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Ansi)]
     private delegate int SetParameterFloatDelegate(string parameterName, float value);
 
-    [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Unicode)]
-    private delegate int GetParameterStringDelegate(string parameterName, StringBuilder value);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetParameterStringWDelegate(
+        [MarshalAs(UnmanagedType.LPStr)] string parameterName,
+        [MarshalAs(UnmanagedType.LPWStr)] StringBuilder value);
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Ansi)]
     private delegate int SetParametersDelegate(string script);
@@ -439,14 +466,17 @@ internal sealed class VoicemeeterRemoteLibrary : IDisposable
         _login = LoadFunction<LoginDelegate>("VBVMR_Login");
         _logout = LoadFunction<LogoutDelegate>("VBVMR_Logout");
         _getVoicemeeterType = LoadFunction<GetVoicemeeterTypeDelegate>("VBVMR_GetVoicemeeterType");
+        _isParametersDirty = LoadFunction<IsParametersDirtyDelegate>("VBVMR_IsParametersDirty");
         _setParameterFloat = LoadFunction<SetParameterFloatDelegate>("VBVMR_SetParameterFloat");
-        _getParameterString = LoadFunction<GetParameterStringDelegate>("VBVMR_GetParameterStringW");
+        _getParameterStringW = LoadFunction<GetParameterStringWDelegate>("VBVMR_GetParameterStringW");
         _setParameters = LoadFunction<SetParametersDelegate>("VBVMR_SetParameters");
     }
 
     public int Login() => (_login ?? throw NotLoaded())();
 
     public int Logout() => (_logout ?? throw NotLoaded())();
+
+    public int IsParametersDirty() => (_isParametersDirty ?? throw NotLoaded())();
 
     public int GetVoicemeeterType()
     {
@@ -467,8 +497,8 @@ internal sealed class VoicemeeterRemoteLibrary : IDisposable
     public string GetParameterString(string parameterName)
     {
         var buffer = new StringBuilder(512);
-        var result = (_getParameterString ?? throw NotLoaded())(parameterName, buffer);
-        return result < 0 ? string.Empty : buffer.ToString();
+        var result = (_getParameterStringW ?? throw NotLoaded())(parameterName, buffer);
+        return result < 0 ? string.Empty : buffer.ToString().TrimEnd('\0').Trim();
     }
 
     public void SetParameters(string script)

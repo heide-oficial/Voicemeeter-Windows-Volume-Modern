@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml.Controls;
 using VMWV.Core.Services;
 using VMWV.Core.Settings;
+using VMWV.Core.Voicemeeter;
 using VMWV.Core.Volume;
 using VMWV_App.Models;
 
@@ -565,10 +566,16 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         foreach (var target in targets.OrderBy(target => target.Kind).ThenBy(target => target.Index))
         {
             var isStrip = target.Kind.Equals("Strip", StringComparison.OrdinalIgnoreCase);
+            var (title, detail) = VoicemeeterChannelNames.FormatDisplay(
+                _voicemeeterClient.Edition,
+                target.Kind,
+                target.Index,
+                target.FriendlyName,
+                target.DeviceName);
             AddBindingTarget(
                 target.Id,
-                target.FriendlyName,
-                isStrip ? "Voicemeeter strip" : "Voicemeeter bus",
+                title,
+                detail,
                 isStrip ? "\uE8D6" : "\uE9D9",
                 isStrip ? "Input strip" : "Output bus");
         }
@@ -1368,9 +1375,13 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             _selectedTargets = selectedTargets;
         }
 
-        ActiveTargetsText = selectedTargets.Count == 0
+        var activeNames = BindingTargets
+            .Where(item => item.IsEnabled)
+            .Select(item => item.Name)
+            .ToList();
+        ActiveTargetsText = activeNames.Count == 0
             ? "No active targets"
-            : string.Join(", ", selectedTargets.Select(target => target.FriendlyName));
+            : string.Join(", ", activeNames);
     }
 
     private async Task EnsureVoicemeeterConnectedAsync()

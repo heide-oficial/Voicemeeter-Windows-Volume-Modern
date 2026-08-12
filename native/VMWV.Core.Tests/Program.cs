@@ -1,5 +1,6 @@
 using System.Text.Json;
 using VMWV.Core.Settings;
+using VMWV.Core.Voicemeeter;
 using VMWV.Core.Volume;
 
 var tests = new List<(string Name, Action Test)>
@@ -7,6 +8,38 @@ var tests = new List<(string Name, Action Test)>
     ("linear scale maps 0 to min", () =>
     {
         AssertEqual(-60d, VolumeMapper.ToVoicemeeterGain(0, -60, 12, false, true));
+    }),
+    ("standard buses use A1 and B1 roles", () =>
+    {
+        AssertEqual("A1", VoicemeeterChannelNames.GetRoleName("Voicemeeter", "Bus", 0));
+        AssertEqual("B1", VoicemeeterChannelNames.GetRoleName("Voicemeeter", "Bus", 1));
+    }),
+    ("banana and potato buses use edition roles", () =>
+    {
+        AssertEqual("B1", VoicemeeterChannelNames.GetRoleName("Voicemeeter Banana", "Bus", 3));
+        AssertEqual("B1", VoicemeeterChannelNames.GetRoleName("Voicemeeter Potato", "Bus", 5));
+    }),
+    ("custom channel label preserves role and index detail", () =>
+    {
+        var (title, detail) = VoicemeeterChannelNames.FormatDisplay(
+            "Voicemeeter Banana",
+            "Bus",
+            0,
+            "Headphones",
+            "Speakers");
+        AssertEqual("Headphones", title);
+        AssertEqual("A1 · Bus 0 · Speakers", detail);
+    }),
+    ("technical fallback is preserved for unknown editions", () =>
+    {
+        var (title, detail) = VoicemeeterChannelNames.FormatDisplay(
+            "Unknown",
+            "Bus",
+            0,
+            "Bus 0",
+            null);
+        AssertEqual("Bus 0", title);
+        AssertEqual("Bus 0", detail);
     }),
     ("linear scale respects zero dB limit", () =>
     {
