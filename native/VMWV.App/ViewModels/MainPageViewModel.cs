@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Threading.Channels;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml.Controls;
@@ -15,17 +16,30 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private const int MaxDiagnosticEntries = 200;
     private const int MaxRecentEventEntries = 8;
     private static readonly TimeSpan SettingsSaveDebounceDelay = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan EngineRestartSettleDelay = TimeSpan.FromMilliseconds(800);
+    private static readonly TimeSpan EndpointRetryDelay = TimeSpan.FromMilliseconds(400);
     private readonly JsonSettingsStore _settingsStore;
     private readonly IAudioEndpointService _audioEndpointService;
     private readonly IVoicemeeterClient _voicemeeterClient;
     private readonly IStartupService _startupService;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly SemaphoreSlim _voicemeeterConnectionLock = new(1, 1);
+    private readonly SemaphoreSlim _engineRestartLock = new(1, 1);
+    private readonly SemaphoreSlim _volumeRestoreLock = new(1, 1);
     private readonly SemaphoreSlim _autoConnectSignal = new(0, 1);
+    private readonly Channel<VolumeRestoreRequest> _volumeRestoreRequests = Channel.CreateBounded<VolumeRestoreRequest>(
+        new BoundedChannelOptions(1)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest
+        });
+    private readonly VolumeRecoveryCoordinator _volumeRecovery = new();
     private readonly object _voicemeeterSyncLock = new();
     private readonly object _settingsSaveLock = new();
     private readonly object _selectedTargetsLock = new();
     private readonly Dictionary<string, VoicemeeterBindingTarget> _voicemeeterTargets = [];
+    private readonly Task _volumeRestoreWorker;
     private IReadOnlyList<VoicemeeterBindingTarget> _selectedTargets = [];
     private AppSettings _settings;
     private int? _pendingVolume;
@@ -53,12 +67,12 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _audioEndpointService = audioEndpointService;
         _voicemeeterClient = voicemeeterClient;
         _startupService = startupService;
-
         _settingsStore = new JsonSettingsStore(AppSettingsPaths.DefaultSettingsPath);
         _settings = _settingsStore.LoadOrCreate();
         LoadFromSettings();
         LoadBindingTargets();
         AttachServiceEvents();
+        _volumeRestoreWorker = ProcessVolumeRestoreRequestsAsync();
         AddLog("Startup", $"Settings loaded from {AppSettingsPaths.DefaultSettingsPath}");
         AddLog("Runtime", "Native audio and Voicemeeter services configured.");
     }
@@ -216,6 +230,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             await _audioEndpointService.StartAsync(_shutdown.Token);
             ApplyAudioSnapshot(_audioEndpointService.Current);
             _lastObservedVolume = _audioEndpointService.Current.Volume;
+            _volumeRecovery.Seed(
+                RecoveryVolumeFromSnapshot(_audioEndpointService.Current),
+                RememberVolume ? _settings.InitialVolume : null);
             _lastObservedMute = _audioEndpointService.Current.IsMuted;
             StartFallbackPolling();
             StatusTitle = "Windows audio connected";
@@ -294,7 +311,6 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
             await _voicemeeterClient.ConnectAsync(_shutdown.Token);
             await RefreshVoicemeeterTargetsAsync();
-            QueueCurrentAudioSync();
 
             VoicemeeterStatus = "Connected";
             VoicemeeterDetail = _voicemeeterClient.Edition;
@@ -308,8 +324,11 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             if (!_restartOnLaunchApplied && _settings.IsToggleEnabled("restart_audio_engine_on_app_launch"))
             {
                 _restartOnLaunchApplied = true;
-                await _voicemeeterClient.RestartAudioEngineAsync(_shutdown.Token);
-                AddLog("Voicemeeter", "Restart audio engine on app launch applied.");
+                await RestartAudioEngineCoreAsync("Restart audio engine on app launch applied.", _shutdown.Token);
+            }
+            else
+            {
+                QueueCurrentAudioSync();
             }
         }
         catch (OperationCanceledException)
@@ -399,8 +418,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         try
         {
             await EnsureVoicemeeterConnectedAsync();
-            await _voicemeeterClient.RestartAudioEngineAsync(_shutdown.Token);
-            AddLog("Voicemeeter", "Restart audio engine command sent.");
+            await RestartAudioEngineCoreAsync("Restart audio engine command sent.", _shutdown.Token);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -1012,8 +1030,21 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private void OnAudioVolumeChanged(object? sender, AudioVolumeChangedEventArgs args)
     {
         _lastAudioCallback = DateTimeOffset.Now;
+        var recoveryDecision = _volumeRecovery.ObserveVolumeChange(
+            args.OldVolume,
+            args.NewVolume,
+            PreventVolumeSpikes);
+        if (recoveryDecision.RestoreVolume is int restoreVolume)
+        {
+            RunOnUiThread(() => AddLog(
+                "Audio",
+                $"Blocked 100% volume change ({recoveryDecision.Reason}); restoring {restoreVolume}%."));
+            QueueVolumeRestore(restoreVolume, recoveryDecision.Reason ?? "volume recovery", syncToVoicemeeter: true);
+            return;
+        }
+
         _lastObservedVolume = args.NewVolume;
-        if (RememberVolume)
+        if (RememberVolume && recoveryDecision.ShouldRememberVolume)
         {
             _settings.InitialVolume = args.NewVolume;
             QueueSettingsSave(_settingsStore.CreateSavePayload(_settings));
@@ -1072,12 +1103,20 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             RunOnUiThread(() => AddLog("Audio", $"Failed to refresh endpoint after resume: {ex.Message}"));
         }
 
-        if (RestartOnResume)
+        _manualDisconnectRequested = false;
+        if (RestartOnResume && _voicemeeterClient.State == VoicemeeterConnectionState.Connected)
         {
-            await RestartAudioEngineAsync();
+            try
+            {
+                await RestartAudioEngineCoreAsync("Restart audio engine after Windows resume applied.", _shutdown.Token);
+                return;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                RunOnUiThread(() => AddLog("Audio", $"Resume recovery failed: {ex.Message}"));
+            }
         }
 
-        _manualDisconnectRequested = false;
         RequestVoicemeeterRecovery();
         QueueCurrentAudioSync();
     }
@@ -1106,8 +1145,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
             if (_voicemeeterClient.State == VoicemeeterConnectionState.Connected)
             {
-                await RestartAudioEngineAsync();
-                QueueCurrentAudioSync();
+                await RestartAudioEngineCoreAsync("Restart audio engine after device change applied.", debounce.Token);
             }
             else
             {
@@ -1422,6 +1460,120 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private async Task RestartAudioEngineCoreAsync(string successMessage, CancellationToken cancellationToken)
+    {
+        await _engineRestartLock.WaitAsync(cancellationToken);
+        try
+        {
+            var snapshot = _audioEndpointService.Current;
+            var restoreVolume = _volumeRecovery.BeginEngineRestart(
+                RecoveryVolumeFromSnapshot(snapshot),
+                RememberVolume ? _settings.InitialVolume : null);
+
+            await _voicemeeterClient.RestartAudioEngineAsync(cancellationToken);
+            AddLog("Voicemeeter", successMessage);
+
+            snapshot = await RefreshEndpointAfterEngineRestartAsync(cancellationToken);
+            RunOnUiThread(() => ApplyAudioSnapshot(snapshot));
+            if (restoreVolume is int safeVolume && snapshot.DeviceId.Length > 0)
+            {
+                await RestoreWindowsVolumeAsync(safeVolume, "engine restart", syncToVoicemeeter: true, cancellationToken);
+            }
+            else
+            {
+                QueueCurrentAudioSync();
+            }
+
+            if (SyncMute && snapshot.DeviceId.Length > 0)
+            {
+                QueueMuteSync(snapshot.IsMuted);
+            }
+        }
+        finally
+        {
+            _engineRestartLock.Release();
+        }
+    }
+
+    private async Task<AudioEndpointSnapshot> RefreshEndpointAfterEngineRestartAsync(CancellationToken cancellationToken)
+    {
+        await Task.Delay(EngineRestartSettleDelay, cancellationToken);
+        for (var attempt = 0; attempt < 6; attempt++)
+        {
+            await _audioEndpointService.RefreshAsync(cancellationToken);
+            var snapshot = _audioEndpointService.Current;
+            if (snapshot.DeviceId.Length > 0)
+            {
+                return snapshot;
+            }
+
+            if (attempt < 5)
+            {
+                await Task.Delay(EndpointRetryDelay, cancellationToken);
+            }
+        }
+
+        return _audioEndpointService.Current;
+    }
+
+    private void QueueVolumeRestore(int volume, string reason, bool syncToVoicemeeter)
+    {
+        _volumeRestoreRequests.Writer.TryWrite(new VolumeRestoreRequest(volume, reason, syncToVoicemeeter));
+    }
+
+    private async Task ProcessVolumeRestoreRequestsAsync()
+    {
+        try
+        {
+            await foreach (var request in _volumeRestoreRequests.Reader.ReadAllAsync(_shutdown.Token))
+            {
+                await RestoreWindowsVolumeAsync(
+                    request.Volume,
+                    request.Reason,
+                    request.SyncToVoicemeeter,
+                    _shutdown.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task RestoreWindowsVolumeAsync(
+        int volume,
+        string reason,
+        bool syncToVoicemeeter,
+        CancellationToken cancellationToken)
+    {
+        await _volumeRestoreLock.WaitAsync(cancellationToken);
+        try
+        {
+            var normalized = Math.Clamp(volume, 0, 100);
+            await _audioEndpointService.SetVolumeAsync(normalized, cancellationToken);
+            _volumeRecovery.RecordRestoredVolume(normalized);
+            _lastObservedVolume = normalized;
+            RunOnUiThread(() =>
+            {
+                WindowsAudioStatus = $"{normalized}%";
+                WindowsAudioDetail = _audioEndpointService.Current.DisplayName;
+                AddLog("Audio", $"Restored Windows volume to {normalized}% ({reason}).");
+            });
+
+            if (syncToVoicemeeter)
+            {
+                QueueVolumeSync(normalized);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            RunOnUiThread(() => AddLog("Audio", $"Failed to restore Windows volume ({reason}): {ex.Message}"));
+        }
+        finally
+        {
+            _volumeRestoreLock.Release();
+        }
+    }
+
     private void RequestVoicemeeterRecovery()
     {
         if (_manualDisconnectRequested || _shutdown.IsCancellationRequested)
@@ -1449,6 +1601,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             : $"{snapshot.DisplayName} - {(snapshot.IsMuted ? "Muted" : "Unmuted")}";
     }
 
+    private static int RecoveryVolumeFromSnapshot(AudioEndpointSnapshot snapshot) =>
+        snapshot.DeviceId.Length == 0 ? -1 : snapshot.Volume;
+
     private static void RunOnUiThread(Action action)
     {
         if (App.DispatcherQueue is null || App.DispatcherQueue.HasThreadAccess)
@@ -1463,6 +1618,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await FlushSettingsSaveAsync();
+        _volumeRestoreRequests.Writer.TryComplete();
         _shutdown.Cancel();
         _deviceRecoveryDebounce?.Cancel();
         _deviceRecoveryDebounce?.Dispose();
@@ -1471,8 +1627,13 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _audioEndpointService.MuteChanged -= OnAudioMuteChanged;
         _audioEndpointService.DeviceChanged -= OnAudioDeviceChanged;
         _voicemeeterClient.ConnectionStateChanged -= OnVoicemeeterConnectionStateChanged;
+        await _volumeRestoreWorker;
         await _voicemeeterClient.DisposeAsync();
         await _audioEndpointService.DisposeAsync();
+        _volumeRestoreLock.Dispose();
+        _engineRestartLock.Dispose();
         _shutdown.Dispose();
     }
+
+    private sealed record VolumeRestoreRequest(int Volume, string Reason, bool SyncToVoicemeeter);
 }

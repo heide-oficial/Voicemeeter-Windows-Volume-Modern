@@ -41,6 +41,57 @@ var tests = new List<(string Name, Action Test)>
         AssertEqual("Bus 0", title);
         AssertEqual("Bus 0", detail);
     }),
+    ("quiet 100 percent jump restores the stable volume", () =>
+    {
+        var time = new ManualTimeProvider();
+        var recovery = new VolumeRecoveryCoordinator(time);
+        recovery.Seed(35, null);
+        time.Advance(TimeSpan.FromSeconds(2));
+
+        var decision = recovery.ObserveVolumeChange(35, 100, preventVolumeSpikes: true);
+
+        AssertEqual(35, decision.RestoreVolume);
+        AssertTrue(!decision.ShouldRememberVolume);
+    }),
+    ("gradual move to 100 percent remains allowed", () =>
+    {
+        var time = new ManualTimeProvider();
+        var recovery = new VolumeRecoveryCoordinator(time);
+        recovery.Seed(80, null);
+        recovery.ObserveVolumeChange(80, 95, preventVolumeSpikes: true);
+        time.Advance(TimeSpan.FromMilliseconds(500));
+
+        var decision = recovery.ObserveVolumeChange(95, 100, preventVolumeSpikes: true);
+
+        AssertEqual<int?>(null, decision.RestoreVolume);
+        AssertTrue(decision.ShouldRememberVolume);
+    }),
+    ("engine restart guard restores volume even when spike protection is off", () =>
+    {
+        var recovery = new VolumeRecoveryCoordinator(new ManualTimeProvider());
+        recovery.Seed(42, null);
+        AssertEqual(42, recovery.BeginEngineRestart(42, null));
+
+        var decision = recovery.ObserveVolumeChange(42, 100, preventVolumeSpikes: false);
+
+        AssertEqual(42, decision.RestoreVolume);
+    }),
+    ("remembered volume is only a restart fallback", () =>
+    {
+        var recovery = new VolumeRecoveryCoordinator(new ManualTimeProvider());
+        recovery.Seed(100, 30);
+
+        AssertEqual(30, recovery.BeginEngineRestart(100, 30));
+    }),
+    ("intentional 100 percent remains the restart volume", () =>
+    {
+        var recovery = new VolumeRecoveryCoordinator(new ManualTimeProvider());
+        recovery.Seed(80, 80);
+        recovery.ObserveVolumeChange(80, 95, preventVolumeSpikes: true);
+        recovery.ObserveVolumeChange(95, 100, preventVolumeSpikes: true);
+
+        AssertEqual(100, recovery.BeginEngineRestart(100, 80));
+    }),
     ("linear scale respects zero dB limit", () =>
     {
         AssertEqual(0d, VolumeMapper.ToVoicemeeterGain(100, -60, 12, true, true));
@@ -132,4 +183,13 @@ static void AssertTrue(bool value)
     {
         throw new InvalidOperationException("Expected true");
     }
+}
+
+sealed class ManualTimeProvider : TimeProvider
+{
+    private DateTimeOffset _now = DateTimeOffset.UnixEpoch;
+
+    public override DateTimeOffset GetUtcNow() => _now;
+
+    public void Advance(TimeSpan duration) => _now += duration;
 }
