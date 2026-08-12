@@ -1,5 +1,6 @@
 using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
+using System.Runtime.InteropServices;
 using VMWV.Core.Services;
 
 namespace VMWV.Infrastructure.Windows.Audio;
@@ -50,7 +51,21 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
         lock (_sync)
         {
             EnsureEnumerator();
-            TryAttachDefaultEndpoint();
+            if (_device is null)
+            {
+                TryAttachDefaultEndpoint();
+            }
+            else
+            {
+                try
+                {
+                    UpdateSnapshotFromEndpoint();
+                }
+                catch (Exception ex) when (IsRecoverableEndpointFailure(ex))
+                {
+                    TryAttachDefaultEndpoint();
+                }
+            }
         }
 
         return Task.CompletedTask;
@@ -126,7 +141,7 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
             UpdateSnapshotFromEndpoint();
             return true;
         }
-        catch
+        catch (Exception ex) when (IsRecoverableEndpointFailure(ex))
         {
             _device?.Dispose();
             _device = null;
@@ -244,6 +259,9 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
 
     private static int ToVolumePercent(float scalar) =>
         Math.Clamp((int)Math.Round(scalar * 100, MidpointRounding.AwayFromZero), 0, 100);
+
+    private static bool IsRecoverableEndpointFailure(Exception exception) =>
+        exception is COMException or InvalidComObjectException or ObjectDisposedException;
 
     private sealed class EndpointNotificationClient : IMMNotificationClient
     {
