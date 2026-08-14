@@ -1186,7 +1186,7 @@
                         <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Support.DonateTitle], Source={StaticResource Strings}}" />
                         <Border MinHeight="112" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
                             <Grid ColumnSpacing="24">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="294" /></Grid.ColumnDefinitions>
                                 <TextBlock VerticalAlignment="Center" Text="{Binding [Support.Message], Source={StaticResource Strings}}" TextWrapping="WrapWholeWords" />
                                 <HyperlinkButton
                                     Grid.Column="1"
@@ -1206,10 +1206,11 @@
                         <TextBlock Margin="0,16,0,0" Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Support.StarTitle], Source={StaticResource Strings}}" />
                         <Border MinHeight="112" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
                             <Grid ColumnSpacing="24">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="294" /></Grid.ColumnDefinitions>
                                 <TextBlock VerticalAlignment="Center" Text="{Binding [Support.StarMessage], Source={StaticResource Strings}}" TextWrapping="WrapWholeWords" />
                                 <Button
                                     Grid.Column="1"
+                                    Width="294"
                                     Height="40"
                                     VerticalAlignment="Center"
                                     AutomationProperties.AutomationId="BtnSupportRepository"
@@ -1222,10 +1223,11 @@
                         <TextBlock Margin="0,16,0,0" Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Support.ShowcaseTitle], Source={StaticResource Strings}}" />
                         <Border MinHeight="144" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
                             <Grid ColumnSpacing="24">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="294" /></Grid.ColumnDefinitions>
                                 <TextBlock VerticalAlignment="Center" Text="{Binding [Support.ShowcaseMessage], Source={StaticResource Strings}}" TextWrapping="WrapWholeWords" />
                                 <Button
                                     Grid.Column="1"
+                                    Width="294"
                                     Height="40"
                                     VerticalAlignment="Center"
                                     AutomationProperties.AutomationId="BtnCreateShowcaseIssue"
