@@ -19,27 +19,29 @@ var tests = new List<(string Name, Action Test)>
         AssertEqual("B1", VoicemeeterChannelNames.GetRoleName("Voicemeeter Banana", "Bus", 3));
         AssertEqual("B1", VoicemeeterChannelNames.GetRoleName("Voicemeeter Potato", "Bus", 5));
     }),
-    ("custom channel label preserves role and index detail", () =>
+    ("custom channel label follows binding hierarchy", () =>
     {
-        var (title, detail) = VoicemeeterChannelNames.FormatDisplay(
+        var display = VoicemeeterChannelNames.FormatDisplay(
             "Voicemeeter Banana",
             "Bus",
             0,
             "Headphones",
             "Speakers");
-        AssertEqual("Headphones", title);
-        AssertEqual("A1 · Bus 0 · Speakers", detail);
+        AssertEqual("A1 / Headphones", display.Title);
+        AssertEqual("Bus 0", display.IndexCaption);
+        AssertEqual("Speakers", display.DeviceCaption);
     }),
     ("technical fallback is preserved for unknown editions", () =>
     {
-        var (title, detail) = VoicemeeterChannelNames.FormatDisplay(
+        var display = VoicemeeterChannelNames.FormatDisplay(
             "Unknown",
             "Bus",
             0,
             "Bus 0",
             null);
-        AssertEqual("Bus 0", title);
-        AssertEqual("Bus 0", detail);
+        AssertEqual("Bus 0", display.Title);
+        AssertEqual("Bus 0", display.IndexCaption);
+        AssertEqual("No device", display.DeviceCaption);
     }),
     ("quiet 100 percent jump restores the stable volume", () =>
     {

@@ -10,6 +10,7 @@ public sealed partial class BindingTargetItem : ObservableObject
         string id,
         string name,
         string detail,
+        string deviceName,
         string iconGlyph,
         string iconName,
         bool isAvailable,
@@ -19,6 +20,7 @@ public sealed partial class BindingTargetItem : ObservableObject
         Id = id;
         Name = name;
         Detail = detail;
+        DeviceName = deviceName;
         IconGlyph = iconGlyph;
         IconName = iconName;
         IsAvailable = isAvailable;
@@ -31,6 +33,8 @@ public sealed partial class BindingTargetItem : ObservableObject
     public string Name { get; }
 
     public string Detail { get; }
+
+    public string DeviceName { get; }
 
     public string IconGlyph { get; }
 

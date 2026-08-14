@@ -24,7 +24,7 @@ public static class VoicemeeterChannelNames
                 ? $"Bus {index}"
                 : $"{kind} {index}";
 
-    public static (string Title, string Detail) FormatDisplay(
+    public static VoicemeeterChannelDisplay FormatDisplay(
         string edition,
         string kind,
         int index,
@@ -38,20 +38,9 @@ public static class VoicemeeterChannelNames
             && !normalizedLabel.Equals(roleName, StringComparison.OrdinalIgnoreCase)
             && !normalizedLabel.Equals(indexCaption, StringComparison.OrdinalIgnoreCase);
 
-        var title = hasCustomLabel ? normalizedLabel! : roleName;
-        var detailParts = new List<string>(3);
-        if (hasCustomLabel && !roleName.Equals(indexCaption, StringComparison.OrdinalIgnoreCase))
-        {
-            detailParts.Add(roleName);
-        }
-
-        detailParts.Add(indexCaption);
-        if (!string.IsNullOrWhiteSpace(deviceName))
-        {
-            detailParts.Add(deviceName.Trim());
-        }
-
-        return (title, string.Join(" · ", detailParts));
+        var title = hasCustomLabel ? $"{roleName} / {normalizedLabel}" : roleName;
+        var deviceCaption = string.IsNullOrWhiteSpace(deviceName) ? "No device" : deviceName.Trim();
+        return new VoicemeeterChannelDisplay(title, indexCaption, deviceCaption);
     }
 
     private static string[] ResolveNames(string edition, string kind)
@@ -77,3 +66,8 @@ public static class VoicemeeterChannelNames
         return [];
     }
 }
+
+public readonly record struct VoicemeeterChannelDisplay(
+    string Title,
+    string IndexCaption,
+    string DeviceCaption);

@@ -562,12 +562,12 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         BusBindingTargets.Clear();
         for (var index = 0; index <= 7; index++)
         {
-            AddBindingTarget($"Strip_{index}", $"Input Strip {index}", "Voicemeeter strip", "\uE8D6", "Input strip");
+            AddBindingTarget($"Strip_{index}", $"Strip {index}", $"Strip {index}", "No device", "\uE8D6", "Input strip");
         }
 
         for (var index = 0; index <= 7; index++)
         {
-            AddBindingTarget($"Bus_{index}", $"Output Bus {index}", "Voicemeeter bus", "\uE9D9", "Output bus");
+            AddBindingTarget($"Bus_{index}", $"Bus {index}", $"Bus {index}", "No device", "\uE9D9", "Output bus");
         }
 
         UpdateBindingTargetAvailability();
@@ -584,7 +584,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         foreach (var target in targets.OrderBy(target => target.Kind).ThenBy(target => target.Index))
         {
             var isStrip = target.Kind.Equals("Strip", StringComparison.OrdinalIgnoreCase);
-            var (title, detail) = VoicemeeterChannelNames.FormatDisplay(
+            var display = VoicemeeterChannelNames.FormatDisplay(
                 _voicemeeterClient.Edition,
                 target.Kind,
                 target.Index,
@@ -592,8 +592,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 target.DeviceName);
             AddBindingTarget(
                 target.Id,
-                title,
-                detail,
+                display.Title,
+                display.IndexCaption,
+                display.DeviceCaption,
                 isStrip ? "\uE8D6" : "\uE9D9",
                 isStrip ? "Input strip" : "Output bus");
         }
@@ -603,12 +604,19 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         UpdateSelectedTargetsCache();
     }
 
-    private void AddBindingTarget(string id, string name, string detail, string glyph, string iconName)
+    private void AddBindingTarget(
+        string id,
+        string name,
+        string detail,
+        string deviceName,
+        string glyph,
+        string iconName)
     {
         var item = new BindingTargetItem(
             id,
             name,
             detail,
+            deviceName,
             glyph,
             iconName,
             true,

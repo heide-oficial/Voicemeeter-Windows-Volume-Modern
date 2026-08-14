@@ -43,7 +43,7 @@
         <DataTemplate x:Key="BindingTargetRowTemplate" x:DataType="models:BindingTargetItem">
             <Border
                 HorizontalAlignment="Stretch"
-                MinHeight="72"
+                MinHeight="88"
                 Padding="16"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -71,6 +71,12 @@
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Text="{x:Bind Detail, Mode=OneWay}"
                             TextWrapping="WrapWholeWords" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind DeviceName, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="NoWrap" />
                     </StackPanel>
                     <StackPanel
                         Grid.Column="2"
