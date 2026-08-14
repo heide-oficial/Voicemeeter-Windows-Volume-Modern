@@ -123,6 +123,15 @@ public sealed partial class MainPage : Page
         UpdatePaneState();
     }
 
+    private async void OnOpenExternalLinkClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string target }
+            && Uri.TryCreate(target, UriKind.Absolute, out var uri))
+        {
+            await Windows.System.Launcher.LaunchUriAsync(uri);
+        }
+    }
+
     private void OnNavigationPaneChanged(NavigationView sender, object args)
     {
         UpdatePaneState();

@@ -1134,18 +1134,15 @@
                                     </StackPanel>
                                     <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [About.ModernDescription], Source={StaticResource Strings}}" TextWrapping="WrapWholeWords" />
                                 </StackPanel>
-                                <HyperlinkButton
+                                <Button
                                     Grid.Column="1"
-                                    Width="40"
                                     Height="40"
                                     AutomationProperties.AutomationId="BtnModernRepository"
                                     AutomationProperties.Name="{Binding [About.ModernRepository], Source={StaticResource Strings}}"
-                                    HorizontalContentAlignment="Center"
-                                    NavigateUri="https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern"
-                                    Padding="0"
-                                    ToolTipService.ToolTip="{Binding [About.OpenRepository], Source={StaticResource Strings}}">
-                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A7;" />
-                                </HyperlinkButton>
+                                    Click="OnOpenExternalLinkClicked"
+                                    Content="{Binding [Common.GoToRepository], Source={StaticResource Strings}}"
+                                    Tag="https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern"
+                                    ToolTipService.ToolTip="{Binding [About.OpenRepository], Source={StaticResource Strings}}" />
                             </Grid>
                         </Border>
 
@@ -1156,18 +1153,15 @@
                                     <TextBlock Text="{Binding [About.OriginalTitle], Source={StaticResource Strings}}" />
                                     <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [About.OriginalDescription], Source={StaticResource Strings}}" TextWrapping="WrapWholeWords" />
                                 </StackPanel>
-                                <HyperlinkButton
+                                <Button
                                     Grid.Column="1"
-                                    Width="40"
                                     Height="40"
                                     AutomationProperties.AutomationId="BtnLegacyRepository"
                                     AutomationProperties.Name="{Binding [About.OriginalRepository], Source={StaticResource Strings}}"
-                                    HorizontalContentAlignment="Center"
-                                    NavigateUri="https://github.com/Frosthaven/voicemeeter-windows-volume"
-                                    Padding="0"
-                                    ToolTipService.ToolTip="{Binding [About.OpenRepository], Source={StaticResource Strings}}">
-                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A7;" />
-                                </HyperlinkButton>
+                                    Click="OnOpenExternalLinkClicked"
+                                    Content="{Binding [Common.GoToRepository], Source={StaticResource Strings}}"
+                                    Tag="https://github.com/Frosthaven/voicemeeter-windows-volume"
+                                    ToolTipService.ToolTip="{Binding [About.OpenRepository], Source={StaticResource Strings}}" />
                             </Grid>
                         </Border>
 
@@ -1188,41 +1182,59 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="{Binding [Support.Title], Source={StaticResource Strings}}" />
-                    <Border
-                        Grid.Row="1"
-                        MinHeight="112"
-                        Padding="16"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="{ThemeResource ControlCornerRadius}">
-                        <Grid ColumnSpacing="24">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock
-                                VerticalAlignment="Center"
-                                Text="{Binding [Support.Message], Source={StaticResource Strings}}"
-                                TextWrapping="WrapWholeWords" />
-                            <HyperlinkButton
-                                Grid.Column="1"
-                                Width="294"
-                                Height="60"
-                                VerticalAlignment="Center"
-                                AutomationProperties.AutomationId="BtnSupportKofi"
-                                AutomationProperties.Name="{Binding [Support.OpenKofi], Source={StaticResource Strings}}"
-                                NavigateUri="https://ko-fi.com/heide_oficial"
-                                Padding="0"
-                                ToolTipService.ToolTip="{Binding [Support.OpenKofi], Source={StaticResource Strings}}">
-                                <Image
+                    <StackPanel Grid.Row="1" Spacing="8">
+                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Support.DonateTitle], Source={StaticResource Strings}}" />
+                        <Border MinHeight="112" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="24">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock VerticalAlignment="Center" Text="{Binding [Support.Message], Source={StaticResource Strings}}" TextWrapping="WrapWholeWords" />
+                                <HyperlinkButton
+                                    Grid.Column="1"
                                     Width="294"
                                     Height="60"
-                                    Source="ms-appx:///Assets/Support/support-me-on-kofi.png"
-                                    Stretch="Uniform" />
-                            </HyperlinkButton>
-                        </Grid>
-                    </Border>
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.AutomationId="BtnSupportKofi"
+                                    AutomationProperties.Name="{Binding [Support.OpenKofi], Source={StaticResource Strings}}"
+                                    NavigateUri="https://ko-fi.com/heide_oficial"
+                                    Padding="0"
+                                    ToolTipService.ToolTip="{Binding [Support.OpenKofi], Source={StaticResource Strings}}">
+                                    <Image Width="294" Height="60" Source="ms-appx:///Assets/Support/support-me-on-kofi.png" Stretch="Uniform" />
+                                </HyperlinkButton>
+                            </Grid>
+                        </Border>
+
+                        <TextBlock Margin="0,16,0,0" Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Support.StarTitle], Source={StaticResource Strings}}" />
+                        <Border MinHeight="112" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="24">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock VerticalAlignment="Center" Text="{Binding [Support.StarMessage], Source={StaticResource Strings}}" TextWrapping="WrapWholeWords" />
+                                <Button
+                                    Grid.Column="1"
+                                    Height="40"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.AutomationId="BtnSupportRepository"
+                                    Click="OnOpenExternalLinkClicked"
+                                    Content="{Binding [Common.GoToRepository], Source={StaticResource Strings}}"
+                                    Tag="https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern" />
+                            </Grid>
+                        </Border>
+
+                        <TextBlock Margin="0,16,0,0" Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Support.ShowcaseTitle], Source={StaticResource Strings}}" />
+                        <Border MinHeight="144" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="24">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock VerticalAlignment="Center" Text="{Binding [Support.ShowcaseMessage], Source={StaticResource Strings}}" TextWrapping="WrapWholeWords" />
+                                <Button
+                                    Grid.Column="1"
+                                    Height="40"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.AutomationId="BtnCreateShowcaseIssue"
+                                    Click="OnOpenExternalLinkClicked"
+                                    Content="{Binding [Support.CreateShowcasePost], Source={StaticResource Strings}}"
+                                    Tag="https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/issues/new?title=%5BSHOWCASE+VIDEO%5D+Video+title+here&amp;labels=showcase+video&amp;body=Here%27s+my+video+showcasing+or+featuring+the+app%3A+%5BINSERT+LINK+HERE%5D" />
+                            </Grid>
+                        </Border>
+                    </StackPanel>
                 </Grid>
             </ScrollViewer>
         </Grid>

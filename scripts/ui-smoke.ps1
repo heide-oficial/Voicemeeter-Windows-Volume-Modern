@@ -51,6 +51,8 @@ Test-UI "Modern repository button exists in settings" { winapp ui wait-for "BtnM
 Test-UI "Original repository button exists in settings" { winapp ui wait-for "BtnLegacyRepository" -a $AppPid -t 5000 }
 Test-UI "Navigate to support" { winapp ui invoke "NavSupport" -a $AppPid }
 Test-UI "Ko-fi support banner exists" { winapp ui wait-for "BtnSupportKofi" -a $AppPid -t 5000 }
+Test-UI "Support repository button exists" { winapp ui wait-for "BtnSupportRepository" -a $AppPid -t 5000 }
+Test-UI "Video showcase button exists" { winapp ui wait-for "BtnCreateShowcaseIssue" -a $AppPid -t 5000 }
 
 New-Item -ItemType Directory -Force -Path "screenshots" | Out-Null
 winapp ui screenshot -a $AppPid -o "screenshots/ui-smoke-final.png" 2>$null | Out-Null
