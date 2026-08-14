@@ -4,7 +4,9 @@ using Microsoft.UI.Xaml.Controls;
 using System.ComponentModel;
 using VMWV.Infrastructure.Windows.Audio;
 using VMWV.Infrastructure.Windows.Startup;
+using VMWV.Infrastructure.Windows.Updates;
 using VMWV.Infrastructure.Windows.Voicemeeter;
+using VMWV_App.Localization;
 using VMWV_App.ViewModels;
 
 namespace VMWV_App;
@@ -12,7 +14,11 @@ namespace VMWV_App;
 public sealed partial class MainPage : Page
 {
     private static readonly Lazy<MainPageViewModel> SharedViewModel = new(
-        () => new MainPageViewModel(new WindowsAudioEndpointService(), new VoicemeeterRemoteClient(), new WindowsStartupService()));
+        () => new MainPageViewModel(
+            new WindowsAudioEndpointService(),
+            new VoicemeeterRemoteClient(),
+            new WindowsStartupService(),
+            new GitHubReleaseUpdateService()));
     private static bool _sharedViewModelDisposed;
 
     private bool _layoutUpdateQueued;
@@ -81,6 +87,17 @@ public sealed partial class MainPage : Page
             _lastLayoutWidth = -1;
             QueueResponsiveLayoutUpdate();
         }
+
+        if (e.PropertyName == nameof(ViewModel.HideSupportPage) && ViewModel.HideSupportPage && SupportSection.Visibility == Visibility.Visible)
+        {
+            RootNavigation.SelectedItem = NavSettings;
+            ShowSection("Settings");
+        }
+
+        if (e.PropertyName == nameof(ViewModel.Language))
+        {
+            UpdatePaneState();
+        }
     }
 
     private void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -97,6 +114,7 @@ public sealed partial class MainPage : Page
         BindingsSection.Visibility = section == "Bindings" ? Visibility.Visible : Visibility.Collapsed;
         SettingsSection.Visibility = section == "Settings" ? Visibility.Visible : Visibility.Collapsed;
         AboutSection.Visibility = section == "About" ? Visibility.Visible : Visibility.Collapsed;
+        SupportSection.Visibility = section == "Support" ? Visibility.Visible : Visibility.Collapsed;
         QueueResponsiveLayoutUpdate();
     }
 
@@ -120,7 +138,7 @@ public sealed partial class MainPage : Page
         PaneToggleText.Visibility = visibility;
         NavCompactLogo.Visibility = isOpen ? Visibility.Collapsed : Visibility.Visible;
 
-        var name = isOpen ? "Collapse sidebar" : "Expand sidebar";
+        var name = LocalizationService.Current.Get(isOpen ? "Navigation.Collapse" : "Navigation.Expand");
         AutomationProperties.SetName(PaneToggleButton, name);
         ToolTipService.SetToolTip(PaneToggleButton, name);
     }
@@ -164,6 +182,7 @@ public sealed partial class MainPage : Page
         var contentWidth = EffectiveContentWidth(width, ViewModel.LayoutMode);
         SettingsContent.Width = EffectiveViewportWidth(SettingsSection, width, ViewModel.LayoutMode);
         AboutContent.Width = EffectiveViewportWidth(AboutSection, width, ViewModel.LayoutMode);
+        SupportContent.Width = EffectiveViewportWidth(SupportSection, width, ViewModel.LayoutMode);
         DashboardContent.Width = contentWidth;
         BindingsSection.Width = contentWidth;
         var narrow = width < 760;
@@ -219,5 +238,6 @@ public sealed partial class MainPage : Page
     public static Visibility InverseBoolToVisibility(bool value) =>
         value ? Visibility.Collapsed : Visibility.Visible;
 
-    public static string OnOffText(bool value) => value ? "On" : "Off";
+    public static string OnOffText(bool value) =>
+        LocalizationService.Current.Get(value ? "Common.On" : "Common.Off");
 }

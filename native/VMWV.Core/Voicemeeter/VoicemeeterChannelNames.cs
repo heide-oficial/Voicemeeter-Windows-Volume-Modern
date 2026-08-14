@@ -39,7 +39,7 @@ public static class VoicemeeterChannelNames
             && !normalizedLabel.Equals(indexCaption, StringComparison.OrdinalIgnoreCase);
 
         var title = hasCustomLabel ? $"{roleName} / {normalizedLabel}" : roleName;
-        var deviceCaption = string.IsNullOrWhiteSpace(deviceName) ? "No device" : deviceName.Trim();
+        var deviceCaption = string.IsNullOrWhiteSpace(deviceName) ? string.Empty : deviceName.Trim();
         return new VoicemeeterChannelDisplay(title, indexCaption, deviceCaption);
     }
 

@@ -32,6 +32,8 @@
     <Content Include="Assets\Brand\logo-black.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Brand\logo-white.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Brand\logo-white.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Support\support-me-on-kofi.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Localization\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

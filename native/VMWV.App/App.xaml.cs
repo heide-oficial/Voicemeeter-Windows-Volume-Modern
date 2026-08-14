@@ -5,6 +5,8 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Microsoft.Windows.AppLifecycle;
+using VMWV.Core.Settings;
+using VMWV_App.Localization;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -44,6 +46,8 @@ public partial class App : Application
     /// </summary>
     public App()
     {
+        var settingsStore = new JsonSettingsStore(AppSettingsPaths.DefaultSettingsPath);
+        LocalizationService.Current.Initialize(settingsStore.LoadOrCreate().Language);
         InitializeComponent();
     }
 

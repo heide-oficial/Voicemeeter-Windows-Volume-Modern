@@ -4,6 +4,7 @@ using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using System.Runtime.InteropServices;
 using VMWV.Core.Settings;
+using VMWV_App.Localization;
 using Windows.Graphics;
 
 namespace VMWV_App;
@@ -14,7 +15,6 @@ public sealed partial class MainWindow : Window
     private const int SwHide = 0;
     private const int SwShow = 5;
     private const int SwRestore = 9;
-    private const string AppName = "Voicemeeter Windows Volume Modern";
     private const uint ImageIcon = 1;
     private const uint LrLoadFromFile = 0x00000010;
     private const uint MfString = 0x00000000;
@@ -93,6 +93,8 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ApplyLocalizedWindowText();
+        LocalizationService.Current.LanguageChanged += OnLanguageChanged;
         _hwnd = Win32Interop.GetWindowFromWindowId(AppWindow.Id);
         _windowProc = WndProc;
         _oldWindowProc = SetWindowLongPtrW(_hwnd, GwlWndProc, Marshal.GetFunctionPointerForDelegate(_windowProc));
@@ -110,6 +112,15 @@ public sealed partial class MainWindow : Window
         ResizeWindow();
 
         RootFrame.Navigate(typeof(MainPage));
+    }
+
+    private void OnLanguageChanged(object? sender, EventArgs e) => ApplyLocalizedWindowText();
+
+    private void ApplyLocalizedWindowText()
+    {
+        var appName = LocalizationService.Current.Get("App.Name");
+        Title = appName;
+        AppTitleBar.Title = appName;
     }
 
     private void ResizeWindow()
@@ -293,7 +304,7 @@ public sealed partial class MainWindow : Window
         var data = CreateNotifyIconData();
         data.uFlags = NifMessage | NifIcon | NifTip;
         data.hIcon = _iconHandle;
-        data.szTip = AppName;
+        data.szTip = LocalizationService.Current.Get("App.Name");
         _trayIconVisible = Shell_NotifyIconW(NimAdd, ref data);
     }
 
@@ -366,8 +377,8 @@ public sealed partial class MainWindow : Window
         }
 
         var menu = CreatePopupMenu();
-        AppendMenuW(menu, MfString, TrayMenuShow, "Show");
-        AppendMenuW(menu, MfString, TrayMenuExit, "Exit");
+        AppendMenuW(menu, MfString, TrayMenuShow, LocalizationService.Current.Get("Tray.Show"));
+        AppendMenuW(menu, MfString, TrayMenuExit, LocalizationService.Current.Get("Tray.Exit"));
         SetForegroundWindow(_hwnd);
 
         var command = TrackPopupMenu(menu, TpmRightButton | TpmReturnCmd, point.X, point.Y, 0, _hwnd, 0);

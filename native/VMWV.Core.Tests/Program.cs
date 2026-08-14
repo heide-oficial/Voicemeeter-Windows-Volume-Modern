@@ -1,5 +1,6 @@
 using System.Text.Json;
 using VMWV.Core.Settings;
+using VMWV.Core.Services;
 using VMWV.Core.Voicemeeter;
 using VMWV.Core.Volume;
 
@@ -18,6 +19,11 @@ var tests = new List<(string Name, Action Test)>
     {
         AssertEqual("B1", VoicemeeterChannelNames.GetRoleName("Voicemeeter Banana", "Bus", 3));
         AssertEqual("B1", VoicemeeterChannelNames.GetRoleName("Voicemeeter Potato", "Bus", 5));
+    }),
+    ("release tags support v prefix and prerelease suffix", () =>
+    {
+        AssertTrue(ReleaseVersionParser.TryParseTag("v1.2.0-preview.1", out var version));
+        AssertEqual(new Version(1, 2, 0), version);
     }),
     ("custom channel label follows binding hierarchy", () =>
     {
@@ -41,7 +47,7 @@ var tests = new List<(string Name, Action Test)>
             null);
         AssertEqual("Bus 0", display.Title);
         AssertEqual("Bus 0", display.IndexCaption);
-        AssertEqual("No device", display.DeviceCaption);
+        AssertEqual(string.Empty, display.DeviceCaption);
     }),
     ("quiet 100 percent jump restores the stable volume", () =>
     {
@@ -117,6 +123,17 @@ var tests = new List<(string Name, Action Test)>
         var settings = new AppSettings { PollingRate = 1 };
         settings.Normalize();
         AssertEqual(25, settings.PollingRate);
+    }),
+    ("settings normalize language codes", () =>
+    {
+        var settings = new AppSettings { Language = " pt_BR " };
+        settings.Normalize();
+        AssertEqual("pt-br", settings.Language);
+    }),
+    ("settings persist support page visibility", () =>
+    {
+        var json = JsonSerializer.Serialize(new AppSettings { HideSupportPage = true });
+        AssertTrue(json.Contains("\"hide_support_page\":true", StringComparison.Ordinal));
     }),
     ("settings deduplicate toggles using last value", () =>
     {

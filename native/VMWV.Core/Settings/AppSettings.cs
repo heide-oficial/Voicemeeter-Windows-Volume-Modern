@@ -32,6 +32,9 @@ public sealed class AppSettings
     [JsonPropertyName("layout_mode")]
     public string LayoutMode { get; set; } = "Compact";
 
+    [JsonPropertyName("language")]
+    public string Language { get; set; } = "en-us";
+
     [JsonPropertyName("limit_db_gain_to_0")]
     public bool LimitDbGainToZero { get; set; }
 
@@ -41,8 +44,8 @@ public sealed class AppSettings
     [JsonPropertyName("remember_volume")]
     public bool RememberVolume { get; set; }
 
-    [JsonPropertyName("disable_donate")]
-    public bool DisableDonate { get; set; }
+    [JsonPropertyName("hide_support_page")]
+    public bool HideSupportPage { get; set; }
 
     [JsonPropertyName("initial_volume")]
     public int? InitialVolume { get; set; }
@@ -143,6 +146,15 @@ public sealed class AppSettings
         if (LayoutMode != normalizedLayoutMode)
         {
             LayoutMode = normalizedLayoutMode;
+            changed = true;
+        }
+
+        var normalizedLanguage = string.IsNullOrWhiteSpace(Language)
+            ? "en-us"
+            : Language.Trim().Replace('_', '-').ToLowerInvariant();
+        if (Language != normalizedLanguage)
+        {
+            Language = normalizedLanguage;
             changed = true;
         }
 
