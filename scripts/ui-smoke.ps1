@@ -47,9 +47,8 @@ Test-UI "Language selector exists" { winapp ui wait-for "CmbLanguage" -a $AppPid
 Test-UI "Support visibility toggle exists" { winapp ui wait-for "TglHideSupport" -a $AppPid -t 5000 }
 Test-UI "Close to tray toggle exists" { winapp ui wait-for "TglCloseToTray" -a $AppPid -t 5000 }
 Test-UI "Settings sync mute toggle exists" { winapp ui wait-for "TglSyncMute" -a $AppPid -t 5000 }
-Test-UI "Navigate to about" { winapp ui invoke "NavAbout" -a $AppPid }
-Test-UI "Modern repository button exists" { winapp ui wait-for "BtnModernRepository" -a $AppPid -t 5000 }
-Test-UI "Original repository button exists" { winapp ui wait-for "BtnLegacyRepository" -a $AppPid -t 5000 }
+Test-UI "Modern repository button exists in settings" { winapp ui wait-for "BtnModernRepository" -a $AppPid -t 5000 }
+Test-UI "Original repository button exists in settings" { winapp ui wait-for "BtnLegacyRepository" -a $AppPid -t 5000 }
 Test-UI "Navigate to support" { winapp ui invoke "NavSupport" -a $AppPid }
 Test-UI "Ko-fi support banner exists" { winapp ui wait-for "BtnSupportKofi" -a $AppPid -t 5000 }
 

@@ -113,7 +113,6 @@ public sealed partial class MainPage : Page
         DashboardSection.Visibility = section == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
         BindingsSection.Visibility = section == "Bindings" ? Visibility.Visible : Visibility.Collapsed;
         SettingsSection.Visibility = section == "Settings" ? Visibility.Visible : Visibility.Collapsed;
-        AboutSection.Visibility = section == "About" ? Visibility.Visible : Visibility.Collapsed;
         SupportSection.Visibility = section == "Support" ? Visibility.Visible : Visibility.Collapsed;
         QueueResponsiveLayoutUpdate();
     }
@@ -181,7 +180,6 @@ public sealed partial class MainPage : Page
         _lastLayoutWidth = width;
         var contentWidth = EffectiveContentWidth(width, ViewModel.LayoutMode);
         SettingsContent.Width = EffectiveViewportWidth(SettingsSection, width, ViewModel.LayoutMode);
-        AboutContent.Width = EffectiveViewportWidth(AboutSection, width, ViewModel.LayoutMode);
         SupportContent.Width = EffectiveViewportWidth(SupportSection, width, ViewModel.LayoutMode);
         DashboardContent.Width = contentWidth;
         BindingsSection.Width = contentWidth;
@@ -205,10 +203,6 @@ public sealed partial class MainPage : Page
         Grid.SetColumn(BusBindingsCard, narrow ? 0 : 1);
         Grid.SetRow(BusBindingsCard, narrow ? 1 : 0);
 
-        AboutModernColumn.Width = new GridLength(1, GridUnitType.Star);
-        AboutLegacyColumn.Width = narrow ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
-        Grid.SetColumn(AboutLegacyCard, narrow ? 0 : 1);
-        Grid.SetRow(AboutLegacyCard, narrow ? 1 : 0);
     }
 
     private static double EffectiveViewportWidth(ScrollViewer scrollViewer, double fallback, string layoutMode)

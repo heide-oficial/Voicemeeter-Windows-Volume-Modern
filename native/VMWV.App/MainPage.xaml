@@ -166,11 +166,6 @@
                 Icon="Setting"
                 Tag="Settings" />
             <NavigationViewItem
-                AutomationProperties.AutomationId="NavAbout"
-                Content="{Binding [Navigation.About], Source={StaticResource Strings}}"
-                Icon="Help"
-                Tag="About" />
-            <NavigationViewItem
                 x:Name="NavSupport"
                 AutomationProperties.AutomationId="NavSupport"
                 Content="{Binding [Navigation.Support], Source={StaticResource Strings}}"
@@ -1127,65 +1122,17 @@
                             </Grid>
                         </Border>
 
-                    </StackPanel>
-                </Grid>
-            </ScrollViewer>
+                        <TextBlock Margin="0,8,0,0" Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Navigation.About], Source={StaticResource Strings}}" />
 
-            <ScrollViewer
-                x:Name="AboutSection"
-                HorizontalScrollBarVisibility="Hidden"
-                HorizontalScrollMode="Disabled"
-                Visibility="Collapsed">
-                <Grid
-                    x:Name="AboutContent"
-                    RowSpacing="16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="{Binding [Navigation.About], Source={StaticResource Strings}}" />
-                    <Grid
-                        x:Name="AboutCardsGrid"
-                        Grid.Row="1"
-                        ColumnSpacing="16"
-                        RowSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition x:Name="AboutModernColumn" Width="*" />
-                            <ColumnDefinition x:Name="AboutLegacyColumn" Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <Border
-                            x:Name="AboutModernCard"
-                            MinHeight="128"
-                            Padding="16"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16" RowSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" />
-                                </Grid.RowDefinitions>
-                                <StackPanel Orientation="Horizontal" Spacing="12">
-                                    <TextBlock
-                                        Style="{StaticResource SubtitleTextBlockStyle}"
-                                        Text="{Binding [About.ModernTitle], Source={StaticResource Strings}}"
-                                        TextWrapping="WrapWholeWords" />
-                                    <TextBlock
-                                        VerticalAlignment="Center"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="{x:Bind ViewModel.VersionText, Mode=OneWay}" />
+                        <Border MinHeight="80" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center" Spacing="2">
+                                    <StackPanel Orientation="Horizontal" Spacing="12">
+                                        <TextBlock Text="{Binding [About.ModernTitle], Source={StaticResource Strings}}" />
+                                        <TextBlock VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind ViewModel.VersionText, Mode=OneWay}" />
+                                    </StackPanel>
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [About.ModernDescription], Source={StaticResource Strings}}" TextWrapping="WrapWholeWords" />
                                 </StackPanel>
                                 <HyperlinkButton
                                     Grid.Column="1"
@@ -1199,36 +1146,16 @@
                                     ToolTipService.ToolTip="{Binding [About.OpenRepository], Source={StaticResource Strings}}">
                                     <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A7;" />
                                 </HyperlinkButton>
-                                <TextBlock
-                                    Grid.Row="1"
-                                    Grid.ColumnSpan="2"
-                                    Margin="0,8,0,0"
-                                    Text="{Binding [About.ModernDescription], Source={StaticResource Strings}}"
-                                    TextWrapping="WrapWholeWords" />
                             </Grid>
                         </Border>
-                        <Border
-                            x:Name="AboutLegacyCard"
-                            Grid.Column="1"
-                            MinHeight="128"
-                            Padding="16"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16" RowSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" />
-                                </Grid.RowDefinitions>
-                                <TextBlock
-                                    Style="{StaticResource SubtitleTextBlockStyle}"
-                                    Text="{Binding [About.OriginalTitle], Source={StaticResource Strings}}"
-                                    TextWrapping="WrapWholeWords" />
+
+                        <Border MinHeight="80" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="{Binding [About.OriginalTitle], Source={StaticResource Strings}}" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [About.OriginalDescription], Source={StaticResource Strings}}" TextWrapping="WrapWholeWords" />
+                                </StackPanel>
                                 <HyperlinkButton
                                     Grid.Column="1"
                                     Width="40"
@@ -1241,15 +1168,10 @@
                                     ToolTipService.ToolTip="{Binding [About.OpenRepository], Source={StaticResource Strings}}">
                                     <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A7;" />
                                 </HyperlinkButton>
-                                <TextBlock
-                                    Grid.Row="1"
-                                    Grid.ColumnSpan="2"
-                                    Margin="0,8,0,0"
-                                    Text="{Binding [About.OriginalDescription], Source={StaticResource Strings}}"
-                                    TextWrapping="WrapWholeWords" />
                             </Grid>
                         </Border>
-                    </Grid>
+
+                    </StackPanel>
                 </Grid>
             </ScrollViewer>
 
@@ -1264,31 +1186,43 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="{Binding [Support.Title], Source={StaticResource Strings}}" />
-                    <TextBlock
+                    <Border
                         Grid.Row="1"
-                        MaxWidth="800"
-                        HorizontalAlignment="Left"
-                        Text="{Binding [Support.Message], Source={StaticResource Strings}}"
-                        TextWrapping="WrapWholeWords" />
-                    <HyperlinkButton
-                        Grid.Row="2"
-                        MaxWidth="392"
-                        Height="80"
-                        HorizontalAlignment="Left"
-                        AutomationProperties.AutomationId="BtnSupportKofi"
-                        AutomationProperties.Name="{Binding [Support.OpenKofi], Source={StaticResource Strings}}"
-                        NavigateUri="https://ko-fi.com/heide_oficial"
-                        Padding="0"
-                        ToolTipService.ToolTip="{Binding [Support.OpenKofi], Source={StaticResource Strings}}">
-                        <Image
-                            MaxWidth="392"
-                            Height="80"
-                            Source="ms-appx:///Assets/Support/support-me-on-kofi.png"
-                            Stretch="Uniform" />
-                    </HyperlinkButton>
+                        MinHeight="112"
+                        Padding="16"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                        <Grid ColumnSpacing="24">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Text="{Binding [Support.Message], Source={StaticResource Strings}}"
+                                TextWrapping="WrapWholeWords" />
+                            <HyperlinkButton
+                                Grid.Column="1"
+                                Width="294"
+                                Height="60"
+                                VerticalAlignment="Center"
+                                AutomationProperties.AutomationId="BtnSupportKofi"
+                                AutomationProperties.Name="{Binding [Support.OpenKofi], Source={StaticResource Strings}}"
+                                NavigateUri="https://ko-fi.com/heide_oficial"
+                                Padding="0"
+                                ToolTipService.ToolTip="{Binding [Support.OpenKofi], Source={StaticResource Strings}}">
+                                <Image
+                                    Width="294"
+                                    Height="60"
+                                    Source="ms-appx:///Assets/Support/support-me-on-kofi.png"
+                                    Stretch="Uniform" />
+                            </HyperlinkButton>
+                        </Grid>
+                    </Border>
                 </Grid>
             </ScrollViewer>
         </Grid>
