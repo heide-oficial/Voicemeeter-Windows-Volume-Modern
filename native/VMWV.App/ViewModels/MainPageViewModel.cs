@@ -608,15 +608,41 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private void RefreshLocalizedOptions()
     {
-        LogoVariantOptions.Clear();
-        LogoVariantOptions.Add(new LanguageOption("Color", T("Option.Color")));
-        LogoVariantOptions.Add(new LanguageOption("Black", T("Option.Black")));
-        LogoVariantOptions.Add(new LanguageOption("White", T("Option.White")));
+        UpdateLocalizedOptions(
+            LogoVariantOptions,
+            ("Color", T("Option.Color")),
+            ("Black", T("Option.Black")),
+            ("White", T("Option.White")));
 
-        LayoutModeOptions.Clear();
-        LayoutModeOptions.Add(new LanguageOption("Compact", T("Option.Compact")));
-        LayoutModeOptions.Add(new LanguageOption("Expanded", T("Option.Expanded")));
+        UpdateLocalizedOptions(
+            LayoutModeOptions,
+            ("Compact", T("Option.Compact")),
+            ("Expanded", T("Option.Expanded")));
         OnPropertyChanged(nameof(Languages));
+    }
+
+    private static void UpdateLocalizedOptions(
+        ObservableCollection<LanguageOption> options,
+        params (string Code, string DisplayName)[] localizedOptions)
+    {
+        var canUpdateInPlace = options.Count == localizedOptions.Length
+            && options.Select(option => option.Code)
+                .SequenceEqual(localizedOptions.Select(option => option.Code), StringComparer.Ordinal);
+        if (canUpdateInPlace)
+        {
+            for (var index = 0; index < options.Count; index++)
+            {
+                options[index].DisplayName = localizedOptions[index].DisplayName;
+            }
+
+            return;
+        }
+
+        options.Clear();
+        foreach (var option in localizedOptions)
+        {
+            options.Add(new LanguageOption(option.Code, option.DisplayName));
+        }
     }
 
     private void RefreshLocalizedState()

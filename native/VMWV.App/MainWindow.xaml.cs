@@ -15,6 +15,8 @@ public sealed partial class MainWindow : Window
     private const int SwHide = 0;
     private const int SwShow = 5;
     private const int SwRestore = 9;
+    private const int SmCxSmallIcon = 49;
+    private const int SmCySmallIcon = 50;
     private const uint ImageIcon = 1;
     private const uint LrLoadFromFile = 0x00000010;
     private const uint MfString = 0x00000000;
@@ -50,6 +52,9 @@ public sealed partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetricsForDpi(int nIndex, uint dpi);
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(nint hWnd, int nCmdShow);
@@ -120,7 +125,6 @@ public sealed partial class MainWindow : Window
     {
         var appName = LocalizationService.Current.Get("App.Name");
         Title = appName;
-        AppTitleBar.Title = appName;
     }
 
     private void ResizeWindow()
@@ -132,18 +136,9 @@ public sealed partial class MainWindow : Window
     public void ApplyBrandIcon(string variant)
     {
         var normalizedVariant = NormalizeLogoVariant(variant);
-        if (_brandVariant == normalizedVariant && AppTitleBar.IconSource is not null)
-        {
-            return;
-        }
-
         _brandVariant = normalizedVariant;
         _brandIconPath = ResolveBrandIconPath(normalizedVariant);
         AppWindow.SetIcon(_brandIconPath);
-        AppTitleBar.IconSource = new ImageIconSource
-        {
-            ImageSource = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(ResolveBrandPngUri(normalizedVariant)))
-        };
 
         if (_trayIconVisible)
         {
@@ -300,7 +295,10 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _iconHandle = LoadImageW(0, _brandIconPath, ImageIcon, 0, 0, LrLoadFromFile);
+        var dpi = GetDpiForWindow(_hwnd);
+        var iconWidth = GetSystemMetricsForDpi(SmCxSmallIcon, dpi);
+        var iconHeight = GetSystemMetricsForDpi(SmCySmallIcon, dpi);
+        _iconHandle = LoadImageW(0, _brandIconPath, ImageIcon, iconWidth, iconHeight, LrLoadFromFile);
         var data = CreateNotifyIconData();
         data.uFlags = NifMessage | NifIcon | NifTip;
         data.hIcon = _iconHandle;
@@ -352,14 +350,6 @@ public sealed partial class MainWindow : Window
             "White" => "logo-white.ico",
             _ => "logo.ico"
         });
-
-    private static string ResolveBrandPngUri(string variant) =>
-        variant switch
-        {
-            "Black" => "ms-appx:///Assets/Brand/logo-black.png",
-            "White" => "ms-appx:///Assets/Brand/logo-white.png",
-            _ => "ms-appx:///Assets/Brand/logo.png"
-        };
 
     private static string NormalizeLogoVariant(string variant) =>
         variant switch

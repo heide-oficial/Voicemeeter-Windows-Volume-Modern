@@ -33,7 +33,7 @@ var tests = new List<(string Name, Action Test)>
             0,
             "Headphones",
             "Speakers");
-        AssertEqual("A1 / Headphones", display.Title);
+        AssertEqual("Headphones", display.Title);
         AssertEqual("Bus 0", display.IndexCaption);
         AssertEqual("Speakers", display.DeviceCaption);
     }),

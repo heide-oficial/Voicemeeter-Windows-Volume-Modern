@@ -212,7 +212,7 @@
 
         <Grid
             x:Name="ContentRoot"
-            Padding="24"
+            Padding="24,48,24,24"
             SizeChanged="OnContentRootSizeChanged">
             <Grid
                 x:Name="DashboardSection"

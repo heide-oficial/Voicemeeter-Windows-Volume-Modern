@@ -1,119 +1,87 @@
 # Voicemeeter Windows Volume Modern
 
-Voicemeeter Windows Volume Modern is a native Windows app that synchronizes the Windows default output volume and mute state with selected Voicemeeter strips and buses.
+Voicemeeter Windows Volume Modern is a native Windows companion application that synchronizes the default Windows output volume and mute state with selected Voicemeeter strips and buses. It is intended for Voicemeeter users who want reliable system-volume control through a Windows 11-style interface, background tray operation, and recovery from audio or Voicemeeter lifecycle changes.
 
-This project is a Windows-focused rewrite of the original [Frosthaven/voicemeeter-windows-volume](https://github.com/Frosthaven/voicemeeter-windows-volume). The modern app removes the legacy Node.js tray runtime and replaces it with WinUI 3, Windows App SDK, Core Audio callbacks, and a native Voicemeeter Remote client.
+[![GitHub stars](https://img.shields.io/github/stars/heide-oficial/Voicemeeter-Windows-Volume-Modern)](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/stargazers)
+[![GitHub downloads](https://img.shields.io/github/downloads/heide-oficial/Voicemeeter-Windows-Volume-Modern/total)](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/releases)
+[![License](https://img.shields.io/github/license/heide-oficial/Voicemeeter-Windows-Volume-Modern)](LICENSE)
 
-![Voicemeeter Windows Volume Modern dashboard](https://i.imgur.com/dGvicy8.png)
-![Voicemeeter Windows Volume Modern settings](https://i.imgur.com/KlaOjxN.png)
-![Voicemeeter Windows Volume Modern bindings](https://i.imgur.com/5pyZ0fy.png)
+## ✨ Features
 
-## What Voicemeeter Windows Volume Modern Is
+- Synchronizes Windows output volume with selected Voicemeeter input strips and output buses.
+- Optionally mirrors the Windows mute state and restores the last remembered volume.
+- Displays edition-aware Voicemeeter channel names, custom labels, and assigned audio devices.
+- Reconnects to Voicemeeter automatically and includes recovery options for device changes, audio-engine restarts, and Windows resume.
+- Protects against unexpected 100% volume recovery and supports configurable gain mapping.
+- Runs in the notification area, supports close-to-tray and Windows startup, and prevents duplicate application instances.
+- Provides dashboard status, strip and bus binding controls, and bounded diagnostic events.
+- Supports compact and expanded interface layouts with selectable logo variants.
 
-Voicemeeter Windows Volume Modern is a desktop utility for Windows 10/11. It runs as a native WinUI 3 app, monitors the current Windows default audio endpoint, and applies matching volume or mute changes to Voicemeeter Remote targets.
+## 🖼️ Demo
 
-The app is not a replacement for Voicemeeter. It is a companion app that keeps selected Voicemeeter strips and buses aligned with Windows volume behavior.
+![Dashboard showing Voicemeeter and Windows audio status](https://i.imgur.com/dGvicy8.png)
 
-## What Voicemeeter Windows Volume Modern Is For
+![Settings page with native Windows controls](https://i.imgur.com/KlaOjxN.png)
 
-- Keeping Windows volume changes synchronized with Voicemeeter input strips or output buses.
-- Mirroring Windows mute changes to selected Voicemeeter targets.
-- Restoring a small, focused tray utility workflow using native Windows 11 UI.
-- Avoiding the operational fragility of the old Node.js, PowerShell polling, and native addon stack.
+![Bindings page for Voicemeeter strips and buses](https://i.imgur.com/5pyZ0fy.png)
 
-## Improvements
+## 🚀 Usage
 
-- Moves the app from a legacy Node.js tray process to a native C#/.NET Windows app.
-- Replaces the old tray-menu-only experience with a full WinUI 3 shell for status, bindings, settings, diagnostics, and project information.
-- Replaces PowerShell-based audio scanning with native Windows Core Audio callbacks for normal volume, mute, and device-change monitoring.
-- Replaces the `ffi-napi`/Node native addon path with a native Voicemeeter Remote integration.
-- Keeps compatibility with the legacy settings shape while moving persistence to typed C# models and source-generated JSON serialization.
-- Adds atomic settings writes, corrupt-settings backup, duplicate-toggle normalization, and polling-bound validation around the old JSON configuration model.
-- Reduces repeated runtime work through coalesced volume/mute events, batched Voicemeeter updates, debounced settings writes, and bounded diagnostic logs.
-- Adds a real Windows 11-style UI while preserving the core workflow of selecting Voicemeeter strips and buses that follow Windows audio state.
-- Replaces the old build/release chain based on webpack, nexe, and NSIS scripts with .NET build projects, a Windows Installer MSI, and a portable EXE artifact.
+1. Install Voicemeeter and ensure it can run on Windows.
+2. Start Voicemeeter Windows Volume Modern. The application attempts to connect to the running Voicemeeter edition automatically.
+3. Open **Bindings** and enable the strips or buses that should follow the Windows default output volume.
+4. Use **Settings** to configure mute synchronization, startup and tray behavior, volume mapping, recovery options, language, and appearance.
+5. Close the main window to keep the application running in the notification area when close-to-tray is enabled.
 
-## Bug Fixes
+For architecture, troubleshooting, build, and release details, see the [technical documentation](documentation.md).
 
-- Replaced the legacy startup task flow that could hang the installer while waiting for a child `cmd.exe` process.
-- Removed duplicate app launch paths from the old autostart handling, reducing the chance of multiple tray instances.
-- Replaced fragile PowerShell worker execution with native services and explicit lifecycle handling.
-- Fixed the old "restart on any device change" behavior that could keep using the startup toggle value instead of the current setting.
-- Removed duplicated resume scanners that could be created when repeatedly toggling resume recovery.
-- Preserved `initial_volume = 0` as a valid remembered volume instead of treating it as missing state.
-- Added corrupt settings recovery by backing up invalid JSON before recreating settings.
-- Replaced the legacy `ffi-napi`/`voicemeeter-connector` dependency path that no longer built reliably on current Node.js versions.
-
-## Development Guide
-
-### Requirements
+## ⚙️ Requirements
 
 - Windows 10 version 1809 or newer.
-- .NET SDK 10.
-- Windows App SDK build tooling.
-- Microsoft WinApp CLI for packaged development runs and UI smoke testing.
-- Voicemeeter installed and running for full manual validation.
+- A 64-bit Windows installation for the published x64 packages.
+- Voicemeeter installed; it must be running for synchronization to operate.
 
-### Build the Windows Host
+## ⬇️ Installation
 
-```powershell
-rtk dotnet build native\VMWV.Core\VMWV.Core.csproj -c Debug
-rtk dotnet build native\VMWV.Infrastructure.Windows\VMWV.Infrastructure.Windows.csproj -c Debug
-```
+### Recommended installation
 
-### Build the WinUI Shell
+Download `VoicemeeterWindowsVolumeModern-Setup-x64.msi` from the [latest GitHub release](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/releases/latest), open it, and follow the Windows Installer steps. The per-machine installation may request administrator approval. After installation, launch **Voicemeeter Windows Volume Modern** from the Start menu or the optional desktop shortcut.
 
-```powershell
-rtk dotnet build native\VMWV.App\VMWV.App.csproj -c Debug -p:Platform=x64
-```
+### Portable version
 
-### Run Locally
+Download `VoicemeeterWindowsVolumeModern-Portable-x64.exe` from the [latest GitHub release](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/releases/latest) and run it directly. The launcher extracts its self-contained application payload to the current user's temporary directory and starts the application; no separate .NET runtime installation is required.
 
-Packaged WinUI development runs should use WinApp CLI:
+## 🔒 Privacy and disclosures
 
-```powershell
-rtk dotnet build native\VMWV.App\VMWV.App.csproj -c Debug -p:Platform=x64
-rtk winapp run native\VMWV.App\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64
-```
+- The application does not include telemetry, analytics, advertising, authentication, or user accounts.
+- Settings are stored locally in `%LOCALAPPDATA%\Voicemeeter Windows Volume\settings.json`. Invalid settings files may be retained beside it as timestamped recovery backups.
+- Diagnostic log files can be written locally under `%LOCALAPPDATA%\Voicemeeter Windows Volume\Logs`.
+- The update checker sends an HTTPS request to the public GitHub Releases API for this repository. It sends the application name and version as its HTTP user agent and does not upload settings or audio data.
+- Voicemeeter control and Windows audio monitoring are performed locally through the Voicemeeter Remote API and Windows audio services.
+- Enabling **Start with Windows** creates an entry for the current user under the Windows `Run` registry key.
+- GitHub repository, release, issue, and Ko-fi links open in the default browser only after the user activates them. The Support page displays the Ko-fi brand image from Ko-fi's content delivery network.
+- The application is a full-trust Windows desktop application so it can access local audio APIs, Voicemeeter, the notification area, local settings, and startup registration.
 
-Run core tests:
+## 🌐 Supported languages
 
-```powershell
-rtk dotnet run --project native\VMWV.Core.Tests\VMWV.Core.Tests.csproj
-```
+- English (`1.2.0+`)
+- Brazilian Portuguese (`1.2.0+`)
 
-### Create Release Artifacts
+Help break the language barrier! Want to translate Voicemeeter Windows Volume Modern into your language? Download the [English language file](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/blob/main/native/VMWV.App/Localization/en-us.json), create a copy using the appropriate language code, and translate the text values without changing the keys. Once finished, submit the translated file through a GitHub pull request or attach it to a new GitHub issue. Your contribution will be credited in the project.
 
-```powershell
-rtk powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Create-ReleaseArtifacts.ps1 -Platform x64
-```
+## ❤️ Support
 
-Outputs:
+Please consider supporting my work. There are many hours of work, thinking and effort behind it. You can support the application by donating any amount on Ko-fi, [starring the GitHub repository](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern), or publishing a video about the application and [submitting it for showcase](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/issues/new?title=%5BSHOWCASE+VIDEO%5D+Video+title+here&labels=showcase+video&body=Here%27s+my+video+showcasing+or+featuring+the+app%3A+%5BINSERT+LINK+HERE%5D). Thank you!
 
-- `artifacts\release\VoicemeeterWindowsVolumeModern-Portable-x64.exe`
-- `artifacts\release\VoicemeeterWindowsVolumeModern-Setup-x64.msi`
+<a href="https://ko-fi.com/heide_oficial" target="_blank">
+  <img src="https://storage.ko-fi.com/cdn/brandasset/v2/support_me_on_kofi_beige.png" alt="Support me on Ko-fi" width="200">
+</a>
 
-Generate only the portable EXE:
+## 👥 Credits
 
-```powershell
-rtk powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Create-PortableRelease.ps1 -Platform x64
-```
+- Created by [Matheus Heidemann - heide-oficial](https://github.com/heide-oficial).
+- Based on the original [Frosthaven/voicemeeter-windows-volume](https://github.com/Frosthaven/voicemeeter-windows-volume) application.
 
-### Project Layout
+## 📄 License
 
-- `native/VMWV.App` - WinUI 3 desktop app, navigation, tray integration, title bar, app icon handling, and single-instance activation.
-- `native/VMWV.Core` - settings, source-generated JSON persistence, volume mapping, and service contracts.
-- `native/VMWV.Infrastructure.Windows` - Windows Core Audio and Voicemeeter Remote integrations.
-- `native/VMWV.Core.Tests` - lightweight test runner for critical core behavior.
-- `native/VMWV.Portable` - portable EXE bootstrapper that contains the release app payload.
-- `native/VMWV.Installer` - WiX/Windows Installer project that builds the native MSI setup package.
-- `scripts` - release and UI smoke-test scripts.
-
-## Credits
-
-- Modern rewrite: Matheus Heidemann.
-- Original project: [Frosthaven/voicemeeter-windows-volume](https://github.com/Frosthaven/voicemeeter-windows-volume).
-
-## License
-
-GNU General Public License v3.0 or later. See [LICENSE](LICENSE).
+This application is licensed under the [GPL-3.0 license](LICENSE).
