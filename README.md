@@ -20,11 +20,11 @@ Voicemeeter Windows Volume Modern is a native Windows companion application that
 
 ## 🖼️ Demo
 
-![Dashboard showing Voicemeeter and Windows audio status](https://i.imgur.com/dGvicy8.png)
+![Dashboard showing Voicemeeter and Windows audio status](https://i.imgur.com/TMq51En.png)
 
-![Settings page with native Windows controls](https://i.imgur.com/KlaOjxN.png)
+![Bindings page for Voicemeeter strips and buses](https://i.imgur.com/bcykopZ.png)
 
-![Bindings page for Voicemeeter strips and buses](https://i.imgur.com/5pyZ0fy.png)
+![Settings page with native Windows controls](https://i.imgur.com/BSBzsKL.png)
 
 ## 🚀 Usage
 
@@ -84,6 +84,8 @@ Thank you!
 
 - Created by [Matheus Heidemann - heide-oficial](https://github.com/heide-oficial).
 - Based on the original application by [Frosthaven](https://github.com/Frosthaven/voicemeeter-windows-volume).
+- [Aeurias](https://github.com/Aeurias) contributed the Core Audio fallback refresh fix through [PR #2](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/2).
+- [DashingNights](https://github.com/DashingNights) contributed volume spike recovery and edition-aware Voicemeeter channel naming through [PR #4](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/4) and [PR #5](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/5).
 
 ## 📄 License
 
