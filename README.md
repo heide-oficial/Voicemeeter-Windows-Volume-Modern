@@ -84,8 +84,8 @@ Thank you!
 
 - Created by [Matheus Heidemann - heide-oficial](https://github.com/heide-oficial).
 - Based on the original application by [Frosthaven](https://github.com/Frosthaven/voicemeeter-windows-volume).
-- [Aeurias](https://github.com/Aeurias) contributed the Core Audio fallback refresh fix through [PR #2](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/2).
-- [DashingNights](https://github.com/DashingNights) contributed volume spike recovery and edition-aware Voicemeeter channel naming through [PR #4](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/4) and [PR #5](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/5).
+- [Aeurias](https://github.com/Aeurias) contributed the [Core Audio fallback refresh fix](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/2).
+- [DashingNights](https://github.com/DashingNights) contributed [volume spike recovery](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/4) and [edition-aware Voicemeeter channel naming](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/5).
 
 ## 📄 License
 
