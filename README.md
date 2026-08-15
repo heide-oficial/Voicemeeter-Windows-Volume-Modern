@@ -1,10 +1,11 @@
 # Voicemeeter Windows Volume Modern
+<p align="left">
+<a href="https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/stargazers"><img src="https://img.shields.io/github/stars/heide-oficial/Voicemeeter-Windows-Volume-Modern?colorA=363a4f&colorB=e0ac00&style=for-the-badge" alt="GitHub star count"></a>
+<a href="https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/releases"><img src="https://img.shields.io/github/downloads/heide-oficial/Voicemeeter-Windows-Volume-Modern/total?colorA=363a4f&colorB=d53984&style=for-the-badge" alt="GitHub release download count"></a>
+<a href="https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/blob/main/LICENSE"><img src="https://img.shields.io/static/v1.svg?style=for-the-badge&label=License&message=GPL-3.0&colorA=363a4f&colorB=b7bdf8" alt="GPL-3.0 license"></a>
+</p>
 
 Voicemeeter Windows Volume Modern is a native Windows companion application that synchronizes the default Windows output volume and mute state with selected Voicemeeter strips and buses. It is intended for Voicemeeter users who want reliable system-volume control through a Windows 11-style interface, background tray operation, and recovery from audio or Voicemeeter lifecycle changes.
-
-[![GitHub stars](https://img.shields.io/github/stars/heide-oficial/Voicemeeter-Windows-Volume-Modern)](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/stargazers)
-[![GitHub downloads](https://img.shields.io/github/downloads/heide-oficial/Voicemeeter-Windows-Volume-Modern/total)](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/releases)
-[![License](https://img.shields.io/github/license/heide-oficial/Voicemeeter-Windows-Volume-Modern)](LICENSE)
 
 ## ✨ Features
 
@@ -33,7 +34,7 @@ Voicemeeter Windows Volume Modern is a native Windows companion application that
 4. Use **Settings** to configure mute synchronization, startup and tray behavior, volume mapping, recovery options, language, and appearance.
 5. Close the main window to keep the application running in the notification area when close-to-tray is enabled.
 
-For architecture, troubleshooting, build, and release details, see the [technical documentation](documentation.md).
+For detailed descriptions of the application screens, controls, and behavior, see the [application documentation](docs/_index.md).
 
 ## ⚙️ Requirements
 
@@ -64,14 +65,16 @@ Download `VoicemeeterWindowsVolumeModern-Portable-x64.exe` from the [latest GitH
 
 ## 🌐 Supported languages
 
-- English (`1.2.0+`)
+- English (`1.0.0+`)
 - Brazilian Portuguese (`1.2.0+`)
 
 Help break the language barrier! Want to translate Voicemeeter Windows Volume Modern into your language? Download the [English language file](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/blob/main/native/VMWV.App/Localization/en-us.json), create a copy using the appropriate language code, and translate the text values without changing the keys. Once finished, submit the translated file through a GitHub pull request or attach it to a new GitHub issue. Your contribution will be credited in the project.
 
 ## ❤️ Support
 
-Please consider supporting my work. There are many hours of work, thinking and effort behind it. You can support the application by donating any amount on Ko-fi, [starring the GitHub repository](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern), or publishing a video about the application and [submitting it for showcase](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/issues/new?title=%5BSHOWCASE+VIDEO%5D+Video+title+here&labels=showcase+video&body=Here%27s+my+video+showcasing+or+featuring+the+app%3A+%5BINSERT+LINK+HERE%5D). Thank you!
+Please consider supporting my work. There are many hours of work, thinking and effort behind it. You can support the application by [donating any amount on Ko-fi](https://ko-fi.com/heide_oficial), [starring the GitHub repository](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern), or publishing a video about the application and [submitting it for showcase](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/issues/new?title=%5BSHOWCASE+VIDEO%5D+Video+title+here&labels=showcase+video&body=Here%27s+my+video+showcasing+or+featuring+the+app%3A+%5BINSERT+LINK+HERE%5D).
+
+Thank you!
 
 <a href="https://ko-fi.com/heide_oficial" target="_blank">
   <img src="https://storage.ko-fi.com/cdn/brandasset/v2/support_me_on_kofi_beige.png" alt="Support me on Ko-fi" width="200">
@@ -80,7 +83,7 @@ Please consider supporting my work. There are many hours of work, thinking and e
 ## 👥 Credits
 
 - Created by [Matheus Heidemann - heide-oficial](https://github.com/heide-oficial).
-- Based on the original [Frosthaven/voicemeeter-windows-volume](https://github.com/Frosthaven/voicemeeter-windows-volume) application.
+- Based on the original application by [Frosthaven](https://github.com/Frosthaven/voicemeeter-windows-volume).
 
 ## 📄 License
 
