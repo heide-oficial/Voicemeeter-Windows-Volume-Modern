@@ -67,6 +67,7 @@ Download `VoicemeeterWindowsVolumeModern-Portable-x64.exe` from the [latest GitH
 
 - English (`1.0.0+`)
 - Brazilian Portuguese (`1.2.0+`)
+- Italian (`1.2.1+`)
 
 Help break the language barrier! Want to translate Voicemeeter Windows Volume Modern into your language? Download the [English language file](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/blob/main/native/VMWV.App/Localization/en-us.json), create a copy using the appropriate language code, and translate the text values without changing the keys. Once finished, submit the translated file through a GitHub pull request or attach it to a new GitHub issue. Your contribution will be credited in the project.
 
@@ -86,6 +87,7 @@ Thank you!
 - Based on the original application by [Frosthaven](https://github.com/Frosthaven/voicemeeter-windows-volume).
 - [Aeurias](https://github.com/Aeurias) contributed the [Core Audio fallback refresh fix](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/2).
 - [DashingNights](https://github.com/DashingNights) contributed [volume spike recovery](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/4) and [edition-aware Voicemeeter channel naming](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/5).
+- [EugenioBuffo](https://github.com/EugenioBuffo) contributed the [Italian translation](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/7).
 
 ## 📄 License
 
