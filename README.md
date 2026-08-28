@@ -90,6 +90,8 @@ Thank you!
 - [DashingNights](https://github.com/DashingNights) contributed [volume spike recovery](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/4) and [edition-aware Voicemeeter channel naming](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/5).
 - [EugenioBuffo](https://github.com/EugenioBuffo) contributed the [Italian translation](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/7).
 
+GitHub's automatic Contributors list is based on commit authorship and may not include every person credited above. This section is the project's complete attribution record, including contributions that were reviewed, adapted, or reimplemented before integration.
+
 ## 📄 License
 
 This application is licensed under the [GPL-3.0 license](LICENSE).
