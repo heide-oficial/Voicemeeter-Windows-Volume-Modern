@@ -85,12 +85,11 @@ Thank you!
 
 - Created by [Matheus Heidemann - heide-oficial](https://github.com/heide-oficial).
 - Based on the original application by [Frosthaven](https://github.com/Frosthaven/voicemeeter-windows-volume).
-- Some contributions were reworked before integration to match the final architecture; the original authors and pull requests remain credited below.
 - [Aeurias](https://github.com/Aeurias) contributed the [Core Audio fallback refresh fix](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/2) and the [low-memory background-host investigation](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/3), which informed the final managed-service design.
 - [DashingNights](https://github.com/DashingNights) contributed [volume spike recovery](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/4) and [edition-aware Voicemeeter channel naming](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/5).
 - [EugenioBuffo](https://github.com/EugenioBuffo) contributed the [Italian translation](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/7).
 
-GitHub's automatic Contributors list is based on commit authorship and may not include every person credited above. This section is the project's complete attribution record, including contributions that were reviewed, adapted, or reimplemented before integration.
+⚠️ GitHub's automatic Contributors list is based on commit authorship and may not include every person credited above. This section is the project's complete attribution record, including contributions that were reviewed, adapted, or reimplemented before integration.
 
 ## 📄 License
 
