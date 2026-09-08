@@ -162,12 +162,15 @@ var tests = new List<(string Name, Action Test)>
 
         AssertEqual(100, settings.PollingRate);
         AssertTrue(Directory.GetFiles(directory, "settings.json.corrupt-*").Length == 1);
-        JsonDocument.Parse(File.ReadAllText(settingsPath));
+        AssertEqual("{ broken json", File.ReadAllText(settingsPath));
+        store.Save(settings);
+        using var repaired = JsonDocument.Parse(File.ReadAllText(settingsPath));
 
         Directory.Delete(directory, true);
     })
 };
 
+tests.AddRange(RegressionTests.SyncTests());
 var failed = 0;
 foreach (var test in tests)
 {
@@ -181,6 +184,12 @@ foreach (var test in tests)
         failed++;
         Console.WriteLine($"FAIL {test.Name}: {ex.Message}");
     }
+}
+
+foreach (var test in RegressionTests.AsyncTests())
+{
+    try { await test.Test(); Console.WriteLine($"PASS {test.Name}"); }
+    catch (Exception ex) { failed++; Console.WriteLine($"FAIL {test.Name}: {ex}"); }
 }
 
 if (failed > 0)

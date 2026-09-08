@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.3.0" />
+    <InternalsVisibleTo Include="VMWV.Infrastructure.Windows.Tests" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -1,7 +1,9 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Animation;
 using System.ComponentModel;
+using VMWV.Infrastructure.Windows.Globalization;
 using VMWV.Infrastructure.Windows.Audio;
 using VMWV.Infrastructure.Windows.Startup;
 using VMWV.Infrastructure.Windows.Updates;
@@ -24,6 +26,9 @@ public sealed partial class MainPage : Page
     private bool _layoutUpdateQueued;
     private double _lastLayoutWidth = -1;
     private bool? _lastNarrowLayout;
+    private bool? _lastPaneOpen;
+    private Storyboard? _paneRotationAnimation;
+    private readonly Windows.UI.ViewManagement.UISettings _uiSettings = new();
 
     public MainPageViewModel ViewModel => SharedViewModel.Value;
 
@@ -48,14 +53,15 @@ public sealed partial class MainPage : Page
         await SharedViewModel.Value.DisposeAsync();
     }
 
-    public static async Task NotifySystemResumeAsync()
+    public static Task NotifySystemResumeAsync()
     {
         if (!SharedViewModel.IsValueCreated || _sharedViewModelDisposed)
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        await SharedViewModel.Value.HandleSystemResumeAsync();
+        SharedViewModel.Value.QueueSystemResume();
+        return Task.CompletedTask;
     }
 
     public static async Task InitializeSharedViewModelAsync()
@@ -68,8 +74,18 @@ public sealed partial class MainPage : Page
         await SharedViewModel.Value.InitializeAsync();
     }
 
+    public static void RefreshRegionalFormats()
+    {
+        WindowsRegionalFormats.Refresh();
+        if (SharedViewModel.IsValueCreated && !_sharedViewModelDisposed)
+        {
+            SharedViewModel.Value.RefreshRegionalFormats();
+        }
+    }
+
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        ((LocalizationSource)Resources["Strings"]).Attach();
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         await InitializeSharedViewModelAsync();
         QueueResponsiveLayoutUpdate();
@@ -77,6 +93,8 @@ public sealed partial class MainPage : Page
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        _paneRotationAnimation?.Stop();
+        ((LocalizationSource)Resources["Strings"]).Detach();
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
     }
 
@@ -111,6 +129,7 @@ public sealed partial class MainPage : Page
     private void ShowSection(string section)
     {
         DashboardSection.Visibility = section == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
+        DiagnosticsSection.Visibility = section == "Diagnostics" ? Visibility.Visible : Visibility.Collapsed;
         BindingsSection.Visibility = section == "Bindings" ? Visibility.Visible : Visibility.Collapsed;
         SettingsSection.Visibility = section == "Settings" ? Visibility.Visible : Visibility.Collapsed;
         SupportSection.Visibility = section == "Support" ? Visibility.Visible : Visibility.Collapsed;
@@ -121,6 +140,7 @@ public sealed partial class MainPage : Page
     {
         RootNavigation.IsPaneOpen = !RootNavigation.IsPaneOpen;
         UpdatePaneState();
+        QueueResponsiveLayoutUpdate();
     }
 
     private async void OnOpenExternalLinkClicked(object sender, RoutedEventArgs e)
@@ -145,13 +165,42 @@ public sealed partial class MainPage : Page
         HeaderAppName.Visibility = visibility;
         PaneToggleText.Visibility = visibility;
         NavCompactLogo.Visibility = isOpen ? Visibility.Collapsed : Visibility.Visible;
+        PaneToggleButton.Width = isOpen ? double.NaN : 32;
+        PaneToggleButton.HorizontalAlignment = isOpen ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
 
         var name = LocalizationService.Current.Get(isOpen ? "Navigation.Collapse" : "Navigation.Expand");
         AutomationProperties.SetName(PaneToggleButton, name);
         ToolTipService.SetToolTip(PaneToggleButton, name);
+
+        if (_lastPaneOpen == isOpen) return;
+        var fromAngle = PaneToggleRotation.Angle;
+        _paneRotationAnimation?.Stop();
+        var angle = isOpen ? 180 : 0;
+        PaneToggleRotation.Angle = angle;
+        if (_lastPaneOpen is not null && IsLoaded && _uiSettings.AnimationsEnabled)
+        {
+            var animation = new DoubleAnimation
+            {
+                From = fromAngle,
+                To = angle,
+                Duration = new Duration(TimeSpan.FromMilliseconds(200)),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+            };
+            Storyboard.SetTarget(animation, PaneToggleRotation);
+            Storyboard.SetTargetProperty(animation, nameof(PaneToggleRotation.Angle));
+            _paneRotationAnimation = new Storyboard();
+            _paneRotationAnimation.Children.Add(animation);
+            _paneRotationAnimation.Begin();
+        }
+        _lastPaneOpen = isOpen;
     }
 
     private void OnContentRootSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        QueueResponsiveLayoutUpdate();
+    }
+
+    private void OnNavigationSizeChanged(object sender, SizeChangedEventArgs e)
     {
         QueueResponsiveLayoutUpdate();
     }
@@ -180,7 +229,10 @@ public sealed partial class MainPage : Page
 
     private void UpdateResponsiveLayout()
     {
-        var width = Math.Max(0, ContentRoot.ActualWidth - ContentRoot.Padding.Left - ContentRoot.Padding.Right);
+        // Constrain the content by the window, not by a page's previous measured width.
+        var paneWidth = RootNavigation.IsPaneOpen ? RootNavigation.OpenPaneLength : RootNavigation.CompactPaneLength;
+        ContentRoot.Width = Math.Max(0, RootNavigation.ActualWidth - paneWidth);
+        var width = Math.Max(0, ContentRoot.Width - ContentRoot.Padding.Left - ContentRoot.Padding.Right);
         if (Math.Abs(width - _lastLayoutWidth) < 1)
         {
             return;
@@ -188,9 +240,10 @@ public sealed partial class MainPage : Page
 
         _lastLayoutWidth = width;
         var contentWidth = EffectiveContentWidth(width, ViewModel.LayoutMode);
-        SettingsContent.Width = EffectiveViewportWidth(SettingsSection, width, ViewModel.LayoutMode);
-        SupportContent.Width = EffectiveViewportWidth(SupportSection, width, ViewModel.LayoutMode);
+        SettingsContent.Width = contentWidth;
+        SupportContent.Width = contentWidth;
         DashboardContent.Width = contentWidth;
+        DiagnosticsContent.Width = contentWidth;
         BindingsSection.Width = contentWidth;
         var narrow = width < 760;
         if (_lastNarrowLayout == narrow)
@@ -199,11 +252,6 @@ public sealed partial class MainPage : Page
         }
 
         _lastNarrowLayout = narrow;
-
-        DashboardStatusColumn.Width = new GridLength(1, GridUnitType.Star);
-        DashboardBindingsColumn.Width = narrow ? new GridLength(0) : new GridLength(1.3, GridUnitType.Star);
-        Grid.SetColumn(DashboardBindingsCardsGrid, narrow ? 0 : 1);
-        Grid.SetRow(DashboardBindingsCardsGrid, narrow ? 1 : 0);
 
         BindingsStripColumn.Width = new GridLength(1, GridUnitType.Star);
         BindingsBusColumn.Width = narrow ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
@@ -214,20 +262,59 @@ public sealed partial class MainPage : Page
 
     }
 
-    private static double EffectiveViewportWidth(ScrollViewer scrollViewer, double fallback, string layoutMode)
+    private void OnDiagnosticsContentSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (layoutMode == "Expanded")
-        {
-            return Math.Max(0, fallback - 16);
-        }
+        DiagnosticsSummaryCard.MaxHeight = Math.Max(0, (e.NewSize.Height - 64) * 0.6);
+    }
 
-        var viewport = scrollViewer.ViewportWidth;
-        if (!double.IsNaN(viewport) && !double.IsInfinity(viewport) && viewport > 0)
+    private void OnDiagnosticsSummarySizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var narrow = e.NewSize.Width < 600;
+        var blocks = new[] { DiagnosticsVoicemeeterBlock, DiagnosticsFailureBlock };
+        var grid = (Grid)sender;
+        var rows = narrow ? blocks.Length : 1;
+        while (grid.RowDefinitions.Count > rows) grid.RowDefinitions.RemoveAt(grid.RowDefinitions.Count - 1);
+        while (grid.RowDefinitions.Count < rows) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        for (var i = 0; i < blocks.Length; i++)
         {
-            return Math.Min(1040, Math.Max(0, viewport - 16));
+            Grid.SetRow(blocks[i], narrow ? i : i / 2);
+            Grid.SetColumn(blocks[i], narrow ? 0 : i % 2);
+            Grid.SetColumnSpan(blocks[i], narrow ? 2 : 1);
         }
+    }
 
-        return Math.Min(1040, Math.Max(0, fallback - 16));
+    private void OnDashboardBindingsLoaded(object sender, RoutedEventArgs e) => UpdateDashboardBindingWidth(sender);
+
+    private void OnDashboardBindingsSizeChanged(object sender, SizeChangedEventArgs e) => UpdateDashboardBindingWidth(sender);
+
+    private static void UpdateDashboardBindingWidth(object sender)
+    {
+        if (sender is GridView { ActualWidth: > 0, ItemsPanelRoot: ItemsWrapGrid panel } view)
+        {
+            panel.ItemWidth = Math.Min(280, view.ActualWidth);
+        }
+    }
+
+    private void OnSettingRowSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (sender is not Grid grid || grid.ColumnDefinitions.Count < 2
+            || grid.Children.LastOrDefault() is not FrameworkElement action) return;
+        var count = grid.ColumnDefinitions.Count;
+        var textColumn = count == 3 ? 1 : 0;
+        var narrow = e.NewSize.Width < 600;
+        if (grid.RowDefinitions.Count == 0)
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        }
+        grid.RowSpacing = narrow ? 12 : 0;
+        grid.ColumnDefinitions[count - 1].Width = narrow ? new GridLength(0)
+            : count == 2 && SupportSection.Visibility == Visibility.Visible ? new GridLength(294) : GridLength.Auto;
+        Grid.SetRow(action, narrow ? 1 : 0);
+        Grid.SetColumn(action, narrow ? textColumn : count - 1);
+        Grid.SetColumnSpan(action, narrow ? count - textColumn : 1);
+        action.HorizontalAlignment = narrow ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        action.MaxWidth = Math.Max(0, e.NewSize.Width - (count == 3 ? 40 : 0));
     }
 
     private static double EffectiveContentWidth(double fallback, string layoutMode) =>

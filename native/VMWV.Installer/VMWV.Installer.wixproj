@@ -2,7 +2,7 @@
   <PropertyGroup>
     <OutputName>VoicemeeterWindowsVolumeModern-Setup</OutputName>
     <OutputType>Package</OutputType>
-    <SuppressValidation>true</SuppressValidation>
+    <SuppressValidation>false</SuppressValidation>
   </PropertyGroup>
 
   <ItemGroup>

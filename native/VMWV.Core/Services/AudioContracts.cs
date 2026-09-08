@@ -26,4 +26,7 @@ public sealed record AudioMuteChangedEventArgs(bool WasMuted, bool IsMuted);
 
 public sealed record AudioDeviceChangedEventArgs(
     IReadOnlyList<string> Added,
-    IReadOnlyList<string> Removed);
+    IReadOnlyList<string> Removed,
+    AudioDeviceChangeKind Kind = AudioDeviceChangeKind.Topology);
+
+public enum AudioDeviceChangeKind { DefaultOutput, Topology }

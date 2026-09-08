@@ -15,7 +15,7 @@ Voicemeeter Windows Volume Modern is a native Windows companion application that
 - Reconnects to Voicemeeter automatically and includes recovery options for device changes, audio-engine restarts, and Windows resume.
 - Protects against unexpected 100% volume recovery and supports configurable gain mapping.
 - Runs in the notification area, supports close-to-tray and Windows startup, and prevents duplicate application instances.
-- Provides dashboard status, strip and bus binding controls, and bounded diagnostic events.
+- Provides dashboard status, strip and bus binding controls, and a dedicated Diagnostics page with the current session, unresolved failures, and recent events.
 - Supports compact and expanded interface layouts with selectable logo variants.
 
 ## 🖼️ Demo
@@ -56,11 +56,12 @@ Download `VoicemeeterWindowsVolumeModern-Portable-x64.exe` from the [latest GitH
 
 - The application does not include telemetry, analytics, advertising, authentication, or user accounts.
 - Settings are stored locally in `%LOCALAPPDATA%\Voicemeeter Windows Volume\settings.json`. Invalid settings files may be retained beside it as timestamped recovery backups.
-- Diagnostic log files can be written locally under `%LOCALAPPDATA%\Voicemeeter Windows Volume\Logs`.
-- The update checker sends an HTTPS request to the public GitHub Releases API for this repository. It sends the application name and version as its HTTP user agent and does not upload settings or audio data.
+- Diagnostic events and startup failures are written locally under `%LOCALAPPDATA%\Voicemeeter Windows Volume\Logs`. Logs may contain device or channel names, local file paths, volume and mute changes, and error details. Review them before sharing. During diagnostic logging, old files are periodically removed after seven days or when the folder exceeds 50 MiB.
+- The update checker sends an HTTPS request to the public GitHub Releases API for this repository, using the application name and version as its HTTP user agent. It does not upload settings, logs, or audio data. Automatic checks are enabled by default and limited to one attempt per 24 hours; they can be disabled in Settings. **Check now** requests a manual check. No updates are downloaded or installed automatically.
+- The last update-check result, release link, and check timestamps are cached locally in `update-cache.json` beside `settings.json`.
 - Voicemeeter control and Windows audio monitoring are performed locally through the Voicemeeter Remote API and Windows audio services.
 - Enabling **Start with Windows** creates an entry for the current user under the Windows `Run` registry key.
-- GitHub repository, release, issue, and Ko-fi links open in the default browser only after the user activates them. The Support page displays the Ko-fi brand image from Ko-fi's content delivery network.
+- GitHub repository, release, issue, and Ko-fi links open in the default browser only after the user activates them. The in-app Ko-fi banner is bundled with the application; opening Support me does not download an image. The screenshots, badges, and support image displayed in this README are externally hosted.
 - The application is a full-trust Windows desktop application so it can access local audio APIs, Voicemeeter, the notification area, local settings, and startup registration.
 
 ## 🌐 Supported languages
@@ -68,6 +69,7 @@ Download `VoicemeeterWindowsVolumeModern-Portable-x64.exe` from the [latest GitH
 - English (`1.0.0+`)
 - Brazilian Portuguese (`1.2.0+`)
 - Italian (`1.2.1+`)
+- Simplified Chinese (`1.3.0+`)
 
 Help break the language barrier! Want to translate Voicemeeter Windows Volume Modern into your language? Download the [English language file](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/blob/main/native/VMWV.App/Localization/en-us.json), create a copy using the appropriate language code, and translate the text values without changing the keys. Once finished, submit the translated file through a GitHub pull request or attach it to a new GitHub issue. Your contribution will be credited in the project.
 
@@ -83,14 +85,14 @@ Thank you!
 
 ## 👥 Credits
 
+WARNING: GitHub's automatic Contributors list is based on commit authorship and may not include every person credited above. This section is the project's complete attribution record, including contributions that were reviewed, adapted, or reimplemented before integration.
+
 - Created by [Matheus Heidemann - heide-oficial](https://github.com/heide-oficial).
-- Based on the original application by [Frosthaven](https://github.com/Frosthaven/voicemeeter-windows-volume).
-- Some contributions were reworked before integration to match the final architecture; the original authors and pull requests remain credited below.
+- Based on the original [Voicemeeter Windows Volume](https://github.com/Frosthaven/voicemeeter-windows-volume) by [Frosthaven](https://github.com/Frosthaven/).
 - [Aeurias](https://github.com/Aeurias) contributed the [Core Audio fallback refresh fix](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/2) and the [low-memory background-host investigation](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/3), which informed the final managed-service design.
 - [DashingNights](https://github.com/DashingNights) contributed [volume spike recovery](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/4) and [edition-aware Voicemeeter channel naming](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/5).
 - [EugenioBuffo](https://github.com/EugenioBuffo) contributed the [Italian translation](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/7).
-
-GitHub's automatic Contributors list is based on commit authorship and may not include every person credited above. This section is the project's complete attribution record, including contributions that were reviewed, adapted, or reimplemented before integration.
+- [He Junxing - STAR-10086](https://github.com/STAR-10086) contributed the [Simplified Chinese translation](https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/pull/8).
 
 ## 📄 License
 

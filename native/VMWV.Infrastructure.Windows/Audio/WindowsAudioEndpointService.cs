@@ -1,6 +1,7 @@
 using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
 using System.Runtime.InteropServices;
+using System.Threading.Channels;
 using VMWV.Core.Services;
 
 namespace VMWV.Infrastructure.Windows.Audio;
@@ -14,6 +15,24 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
     private int _volume;
     private bool _isMuted;
     private bool _isStarted;
+    private bool _disposed;
+    private int _generation;
+    private AudioEndpointVolumeNotificationDelegate? _volumeHandler;
+    private readonly Channel<Action> _notifications = Channel.CreateUnbounded<Action>(
+        new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
+    private readonly Task _notificationWorker;
+
+    public WindowsAudioEndpointService() => _notificationWorker = Task.Run(ProcessNotificationsAsync);
+
+    private async Task ProcessNotificationsAsync()
+    {
+        await foreach (var notification in _notifications.Reader.ReadAllAsync())
+        {
+            if (_disposed) continue;
+            try { notification(); }
+            catch (Exception ex) when (IsRecoverableEndpointFailure(ex)) { }
+        }
+    }
 
     public event EventHandler<AudioVolumeChangedEventArgs>? VolumeChanged;
 
@@ -24,34 +43,52 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
     public AudioEndpointSnapshot Current { get; private set; } =
         new(string.Empty, "No audio endpoint", 0, false);
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken) =>
+        Task.Run(() => StartCoreAsync(cancellationToken), cancellationToken);
+
+    private Task StartCoreAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         lock (_sync)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             if (_isStarted)
             {
                 return Task.CompletedTask;
             }
 
-            _enumerator = new MMDeviceEnumerator();
-            _notificationClient = new EndpointNotificationClient(this);
-            _enumerator.RegisterEndpointNotificationCallback(_notificationClient);
-            TryAttachDefaultEndpoint();
-            _isStarted = true;
+            try
+            {
+                EnsureEnumerator();
+                TryAttachDefaultEndpoint();
+                _isStarted = true;
+            }
+            catch
+            {
+                _isStarted = false;
+                _enumerator?.Dispose();
+                _enumerator = null;
+                _notificationClient = null;
+                throw;
+            }
         }
 
         return Task.CompletedTask;
     }
 
-    public Task RefreshAsync(CancellationToken cancellationToken)
+    public Task RefreshAsync(CancellationToken cancellationToken) =>
+        Task.Run(() => RefreshCoreAsync(cancellationToken), cancellationToken);
+
+    private Task RefreshCoreAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_sync)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             EnsureEnumerator();
-            if (_device is null)
+            using var currentDefault = TryGetDefaultEndpoint();
+            if (_device is null || currentDefault?.ID != _device.ID)
             {
                 TryAttachDefaultEndpoint();
             }
@@ -71,7 +108,10 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
         return Task.CompletedTask;
     }
 
-    public Task SetVolumeAsync(int volume, CancellationToken cancellationToken)
+    public Task SetVolumeAsync(int volume, CancellationToken cancellationToken) =>
+        Task.Run(() => SetVolumeCoreAsync(volume, cancellationToken), cancellationToken);
+
+    private Task SetVolumeCoreAsync(int volume, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_sync)
@@ -84,7 +124,10 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
         return Task.CompletedTask;
     }
 
-    public Task SetMuteAsync(bool isMuted, CancellationToken cancellationToken)
+    public Task SetMuteAsync(bool isMuted, CancellationToken cancellationToken) =>
+        Task.Run(() => SetMuteCoreAsync(isMuted, cancellationToken), cancellationToken);
+
+    private Task SetMuteCoreAsync(bool isMuted, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_sync)
@@ -96,13 +139,18 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
         return Task.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public ValueTask DisposeAsync() => new(Task.Run(DisposeCoreAsync));
+
+    private async Task DisposeCoreAsync()
     {
         lock (_sync)
         {
+            if (_disposed) return;
+            _disposed = true;
+            _notifications.Writer.TryComplete();
             if (_device is not null)
             {
-                _device.AudioEndpointVolume.OnVolumeNotification -= OnVolumeNotification;
+                _device.AudioEndpointVolume.OnVolumeNotification -= _volumeHandler;
                 _device.Dispose();
                 _device = null;
             }
@@ -118,7 +166,13 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
             _isStarted = false;
         }
 
-        return ValueTask.CompletedTask;
+        await _notificationWorker.ConfigureAwait(false);
+    }
+
+    private MMDevice? TryGetDefaultEndpoint()
+    {
+        try { return _enumerator!.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia); }
+        catch (Exception ex) when (IsRecoverableEndpointFailure(ex)) { return null; }
     }
 
     private bool TryAttachDefaultEndpoint()
@@ -128,16 +182,20 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
             throw new InvalidOperationException("Audio endpoint enumerator has not been created.");
         }
 
+        var generation = ++_generation;
         if (_device is not null)
         {
-            _device.AudioEndpointVolume.OnVolumeNotification -= OnVolumeNotification;
-            _device.Dispose();
+            var previous = _device;
+            _device = null;
+            previous.AudioEndpointVolume.OnVolumeNotification -= _volumeHandler;
+            previous.Dispose();
         }
 
         try
         {
             _device = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-            _device.AudioEndpointVolume.OnVolumeNotification += OnVolumeNotification;
+            _volumeHandler = data => _notifications.Writer.TryWrite(() => OnVolumeNotification(data, generation));
+            _device.AudioEndpointVolume.OnVolumeNotification += _volumeHandler;
             UpdateSnapshotFromEndpoint();
             return true;
         }
@@ -146,6 +204,18 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
             _device?.Dispose();
             _device = null;
             UpdateSnapshotFromEndpoint();
+            // A stopped audio service can leave the COM enumerator unusable.
+            // Recreate it on the next monitored attempt, outside native callbacks.
+            try
+            {
+                if (_notificationClient is not null)
+                    _enumerator.UnregisterEndpointNotificationCallback(_notificationClient);
+            }
+            catch (Exception cleanupError) when (IsRecoverableEndpointFailure(cleanupError)) { }
+            _enumerator.Dispose();
+            _enumerator = null;
+            _notificationClient = null;
+            _isStarted = false;
             return false;
         }
     }
@@ -167,13 +237,14 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
             _isMuted);
     }
 
-    private void OnVolumeNotification(AudioVolumeNotificationData data)
+    private void OnVolumeNotification(AudioVolumeNotificationData data, int generation)
     {
         AudioVolumeChangedEventArgs? volumeArgs = null;
         AudioMuteChangedEventArgs? muteArgs = null;
 
         lock (_sync)
         {
+            if (_disposed || generation != _generation || _device is null) return;
             var newVolume = ToVolumePercent(data.MasterVolume);
             if (newVolume != _volume)
             {
@@ -223,7 +294,7 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
             TryAttachDefaultEndpoint();
         }
 
-        DeviceChanged?.Invoke(this, new AudioDeviceChangedEventArgs(added, removed));
+        DeviceChanged?.Invoke(this, new AudioDeviceChangedEventArgs(added, removed, AudioDeviceChangeKind.DefaultOutput));
     }
 
     private void OnDeviceAdded(string deviceId)
@@ -238,6 +309,7 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
 
     private void EnsureStarted()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (!_isStarted || _device is null)
         {
             throw new InvalidOperationException("Windows audio endpoint service has not started.");
@@ -276,21 +348,25 @@ public sealed class WindowsAudioEndpointService : IAudioEndpointService
         {
             if (newState == DeviceState.Active)
             {
-                _owner.OnDeviceAdded(deviceId);
+                _owner._notifications.Writer.TryWrite(() => _owner.OnDeviceAdded(deviceId));
+            }
+            else
+            {
+                _owner._notifications.Writer.TryWrite(() => _owner.OnDeviceRemoved(deviceId));
             }
         }
 
         public void OnDeviceAdded(string pwstrDeviceId) =>
-            _owner.OnDeviceAdded(pwstrDeviceId);
+            _owner._notifications.Writer.TryWrite(() => _owner.OnDeviceAdded(pwstrDeviceId));
 
         public void OnDeviceRemoved(string deviceId) =>
-            _owner.OnDeviceRemoved(deviceId);
+            _owner._notifications.Writer.TryWrite(() => _owner.OnDeviceRemoved(deviceId));
 
         public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId)
         {
             if (flow == DataFlow.Render && role == Role.Multimedia)
             {
-                _owner.OnDefaultDeviceChanged(defaultDeviceId);
+                _owner._notifications.Writer.TryWrite(() => _owner.OnDefaultDeviceChanged(defaultDeviceId));
             }
         }
 

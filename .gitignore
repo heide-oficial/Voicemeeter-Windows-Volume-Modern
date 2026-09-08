@@ -22,3 +22,7 @@ ui-smoke-results.json
 artifacts/
 changelog-*.md
 native/VMWV.Installer/GeneratedFiles.wxs
+
+# Local audit material, not public application documentation.
+/instructions.md
+/auditoria-resumida.md

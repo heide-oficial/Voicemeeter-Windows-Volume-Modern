@@ -5,7 +5,7 @@
   <Package
     Name="Voicemeeter Windows Volume Modern"
     Manufacturer="Matheus Heidemann"
-    Version="1.2.1"
+    Version="1.3.0"
     UpgradeCode="9D2360E1-12F5-4D1B-A506-0CFDA8DE34C0"
     Scope="perMachine">
 
@@ -19,7 +19,7 @@
     <Property Id="ApplicationFolderName" Value="Voicemeeter Windows Volume Modern" />
     <Property Id="WixAppFolder" Value="WixPerMachineFolder" />
 
-    <StandardDirectory Id="ProgramFilesFolder">
+    <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="APPLICATIONFOLDER" Name="Voicemeeter Windows Volume Modern" />
     </StandardDirectory>
 

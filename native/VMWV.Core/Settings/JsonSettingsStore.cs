@@ -5,87 +5,95 @@ namespace VMWV.Core.Settings;
 public sealed class JsonSettingsStore
 {
     private readonly string _settingsPath;
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
 
-    public JsonSettingsStore(string settingsPath)
-    {
-        _settingsPath = settingsPath;
-    }
+    public JsonSettingsStore(string settingsPath) => _settingsPath = settingsPath;
+    public Exception? LoadError { get; private set; }
 
     public AppSettings LoadOrCreate()
     {
-        if (!File.Exists(_settingsPath))
-        {
-            var created = new AppSettings();
-            Save(created);
-            return created;
-        }
-
+        LoadError = null;
         try
         {
-            var json = File.ReadAllText(_settingsPath);
-            var settings = AppSettingsJsonSerializer.Deserialize(json) ?? new AppSettings();
-            if (settings.Normalize())
-            {
-                Save(settings);
-            }
-
+            var settings = AppSettingsJsonSerializer.Deserialize(File.ReadAllText(_settingsPath))
+                ?? throw new JsonException("The settings document is null.");
+            settings.Normalize();
+            LoadError = null;
             return settings;
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        catch (FileNotFoundException) { return new AppSettings(); }
+        catch (DirectoryNotFoundException) { return new AppSettings(); }
+        catch (JsonException)
         {
-            BackupCorruptSettings();
-            var created = new AppSettings();
-            Save(created);
-            return created;
+            // Preserve the original before allowing a replacement to be saved.
+            try
+            {
+                File.Copy(_settingsPath, $"{_settingsPath}.corrupt-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}");
+                return new AppSettings();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                LoadError = ex;
+                return new AppSettings();
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LoadError = ex;
+            return new AppSettings();
         }
     }
 
     public void Save(AppSettings settings)
     {
         var json = CreateSavePayload(settings);
-        SavePayload(json);
+        _writeLock.Wait();
+        try
+        {
+            PrepareDirectory();
+            var tempPath = $"{_settingsPath}.{Guid.NewGuid():N}.tmp";
+            try
+            {
+                File.WriteAllText(tempPath, json);
+                File.Move(tempPath, _settingsPath, true);
+            }
+            finally { TryDelete(tempPath); }
+        }
+        finally { _writeLock.Release(); }
     }
 
-    public string CreateSavePayload(AppSettings settings)
-    {
-        settings.Normalize();
-        return AppSettingsJsonSerializer.Serialize(settings);
-    }
+    public string CreateSavePayload(AppSettings settings) => AppSettingsJsonSerializer.Serialize(settings);
 
     public async Task SavePayloadAsync(string json, CancellationToken cancellationToken)
     {
-        var directory = Path.GetDirectoryName(_settingsPath);
-        if (!string.IsNullOrWhiteSpace(directory))
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var tempPath = $"{_settingsPath}.{Guid.NewGuid():N}.tmp";
+        try
         {
-            Directory.CreateDirectory(directory);
+            PrepareDirectory();
+            await File.WriteAllTextAsync(tempPath, json, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(tempPath, _settingsPath, true);
         }
-
-        var tempPath = $"{_settingsPath}.tmp";
-        await File.WriteAllTextAsync(tempPath, json, cancellationToken);
-        File.Move(tempPath, _settingsPath, true);
+        finally
+        {
+            TryDelete(tempPath);
+            _writeLock.Release();
+        }
     }
 
-    private void SavePayload(string json)
+    private void PrepareDirectory()
     {
-        var directory = Path.GetDirectoryName(_settingsPath);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
+        if (LoadError is not null)
+            throw new IOException("Settings could not be read. The existing file will not be overwritten.", LoadError);
+        if (Path.GetDirectoryName(_settingsPath) is { Length: > 0 } directory)
             Directory.CreateDirectory(directory);
-        }
-
-        var tempPath = $"{_settingsPath}.tmp";
-        File.WriteAllText(tempPath, json);
-        File.Move(tempPath, _settingsPath, true);
     }
 
-    private void BackupCorruptSettings()
+    private static void TryDelete(string path)
     {
-        if (!File.Exists(_settingsPath))
-        {
-            return;
-        }
-
-        var backupPath = $"{_settingsPath}.corrupt-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
-        File.Copy(_settingsPath, backupPath, true);
+        try { File.Delete(path); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 }

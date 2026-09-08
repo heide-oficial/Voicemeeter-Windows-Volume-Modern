@@ -47,6 +47,9 @@ public sealed class AppSettings
     [JsonPropertyName("hide_support_page")]
     public bool HideSupportPage { get; set; }
 
+    [JsonPropertyName("check_updates_automatically")]
+    public bool CheckUpdatesAutomatically { get; set; } = true;
+
     [JsonPropertyName("initial_volume")]
     public int? InitialVolume { get; set; }
 
@@ -106,7 +109,7 @@ public sealed class AppSettings
         }
 
         var normalizedToggles = Toggles
-            .Where(toggle => !string.IsNullOrWhiteSpace(toggle.Setting))
+            .Where(toggle => toggle is not null && !string.IsNullOrWhiteSpace(toggle.Setting))
             .GroupBy(toggle => toggle.Setting, StringComparer.Ordinal)
             .Select(group => group.Last())
             .ToList();
@@ -177,7 +180,7 @@ public sealed class AppSettings
 
     private Dictionary<string, ToggleSetting> ToggleIndex =>
         _toggleIndex ??= Toggles
-            .Where(toggle => !string.IsNullOrWhiteSpace(toggle.Setting))
+            .Where(toggle => toggle is not null && !string.IsNullOrWhiteSpace(toggle.Setting))
             .GroupBy(toggle => toggle.Setting, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Last(), StringComparer.Ordinal);
 }

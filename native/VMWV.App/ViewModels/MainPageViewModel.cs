@@ -8,6 +8,7 @@ using VMWV.Core.Services;
 using VMWV.Core.Settings;
 using VMWV.Core.Voicemeeter;
 using VMWV.Core.Volume;
+using VMWV.Infrastructure.Windows.Globalization;
 using VMWV_App.Models;
 using VMWV_App.Localization;
 
@@ -16,20 +17,15 @@ namespace VMWV_App.ViewModels;
 public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 {
     private const int MaxDiagnosticEntries = 200;
-    private const int MaxRecentEventEntries = 8;
-    private static readonly TimeSpan SettingsSaveDebounceDelay = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan EngineRestartSettleDelay = TimeSpan.FromMilliseconds(800);
     private static readonly TimeSpan EndpointRetryDelay = TimeSpan.FromMilliseconds(400);
     private readonly JsonSettingsStore _settingsStore;
     private readonly IAudioEndpointService _audioEndpointService;
     private readonly IVoicemeeterClient _voicemeeterClient;
     private readonly IStartupService _startupService;
-    private readonly IUpdateService _updateService;
     private readonly CancellationTokenSource _shutdown = new();
-    private readonly SemaphoreSlim _voicemeeterConnectionLock = new(1, 1);
     private readonly SemaphoreSlim _engineRestartLock = new(1, 1);
     private readonly SemaphoreSlim _volumeRestoreLock = new(1, 1);
-    private readonly SemaphoreSlim _autoConnectSignal = new(0, 1);
     private readonly Channel<VolumeRestoreRequest> _volumeRestoreRequests = Channel.CreateBounded<VolumeRestoreRequest>(
         new BoundedChannelOptions(1)
         {
@@ -39,28 +35,31 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         });
     private readonly VolumeRecoveryCoordinator _volumeRecovery = new();
     private readonly object _voicemeeterSyncLock = new();
-    private readonly object _settingsSaveLock = new();
     private readonly object _selectedTargetsLock = new();
     private readonly Dictionary<string, VoicemeeterBindingTarget> _voicemeeterTargets = [];
     private readonly Task _volumeRestoreWorker;
     private IReadOnlyList<VoicemeeterBindingTarget> _selectedTargets = [];
+    private readonly SettingsWriter _settingsWriter;
+    private readonly AudioMonitor _audioMonitor;
+    private readonly ConnectionMonitor _connectionMonitor;
+    private readonly UpdateCoordinator _updates;
+    private readonly DiagnosticLogWriter _logWriter = new(AppSettingsPaths.DefaultLogsFolder);
+    private readonly AsyncWorkGroup _work = new();
+    private Task? _disposeTask;
+    private Task? _initializeTask;
+    private bool _audioSeeded;
     private AppSettings _settings;
     private int? _pendingVolume;
     private bool? _pendingMute;
-    private CancellationTokenSource? _settingsSaveDebounce;
-    private string? _pendingSettingsPayload;
     private bool _isLoading;
     private bool _isInitialized;
-    private bool _autoConnectStarted;
-    private bool _manualDisconnectRequested;
-    private bool _fallbackPollingStarted;
     private bool _restartOnLaunchApplied;
     private bool _volumeSyncWorkerRunning;
     private bool _muteSyncWorkerRunning;
     private CancellationTokenSource? _deviceRecoveryDebounce;
-    private DateTimeOffset _lastAudioCallback = DateTimeOffset.MinValue;
     private int _lastObservedVolume;
     private bool _lastObservedMute;
+    private string _lastObservedDeviceId = string.Empty;
 
     public MainPageViewModel(
         IAudioEndpointService audioEndpointService,
@@ -71,9 +70,22 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _audioEndpointService = audioEndpointService;
         _voicemeeterClient = voicemeeterClient;
         _startupService = startupService;
-        _updateService = updateService;
         _settingsStore = new JsonSettingsStore(AppSettingsPaths.DefaultSettingsPath);
         _settings = _settingsStore.LoadOrCreate();
+        _settingsWriter = new SettingsWriter(_settingsStore);
+        _settingsWriter.SaveFailed += (_, ex) => RunOnUiThread(() => AddLog(T("Log.Settings"), TF("Log.SettingsSaveFailed", ex.Message), "settings.error"));
+        _audioMonitor = new AudioMonitor(_audioEndpointService, () => _settings.PollingRate);
+        _connectionMonitor = new ConnectionMonitor(_voicemeeterClient);
+        _updates = new UpdateCoordinator(updateService, AppInfo.Version,
+            Path.Combine(Path.GetDirectoryName(AppSettingsPaths.DefaultSettingsPath)!, "update-cache.json"));
+        _work.Failed += (_, ex) => RunOnUiThread(() => AddLog(T("Log.Runtime"), ex.Message, "runtime.error"));
+        _audioMonitor.SnapshotChanged += OnMonitoredSnapshot;
+        _audioMonitor.HealthChanged += OnMonitorHealthChanged;
+        _audioMonitor.Failed += (_, ex) => RunOnUiThread(() => AddLog(T("Log.Audio"), TF("Log.PollingFailed", ex.Message), "audio.error"));
+        _connectionMonitor.Ready += OnConnectionReady;
+        _connectionMonitor.HealthChanged += OnMonitorHealthChanged;
+        _connectionMonitor.Failed += (_, ex) => RunOnUiThread(() => ReportVoicemeeterCommandFailure(T("Common.ConnectVoicemeeter"), ex));
+        _updates.Changed += (_, state) => RunOnUiThread(ApplyUpdateState);
         LoadFromSettings();
         LoadBindingTargets();
         AttachServiceEvents();
@@ -94,13 +106,11 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     public partial bool HasBusBindingTargets { get; set; } = true;
 
-    public ObservableCollection<string> DefinedStripBindings { get; } = [];
+    public ObservableCollection<BindingTargetItem> DefinedStripBindings { get; } = [];
 
-    public ObservableCollection<string> DefinedBusBindings { get; } = [];
+    public ObservableCollection<BindingTargetItem> DefinedBusBindings { get; } = [];
 
     public ObservableCollection<DiagnosticLogEntry> Diagnostics { get; } = [];
-
-    public ObservableCollection<DiagnosticLogEntry> RecentEvents { get; } = [];
 
     public ObservableCollection<LanguageOption> LogoVariantOptions { get; } = [];
 
@@ -143,12 +153,6 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     [ObservableProperty]
     public partial string ActiveTargetsText { get; set; } = T("Status.NoActiveTargets");
-
-    [ObservableProperty]
-    public partial string LastVolumeSyncText { get; set; } = T("Status.VolumePending");
-
-    [ObservableProperty]
-    public partial string LastMuteSyncText { get; set; } = T("Status.MutePending");
 
     [ObservableProperty]
     public partial string LastVoicemeeterError { get; set; } = T("Status.NoVoicemeeterErrors");
@@ -237,64 +241,123 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     public partial double PollingRate { get; set; }
 
+    [ObservableProperty]
+    public partial bool CheckUpdatesAutomatically { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsCheckingForUpdates { get; set; }
+
+    [ObservableProperty]
+    public partial string LastUpdateCheckText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string GainValidationMessage { get; set; } = string.Empty;
+
+    public bool HasSettingsReadError => _settingsStore.LoadError is not null;
+
+    public bool CanEditSettings => !HasSettingsReadError && !_shutdown.IsCancellationRequested;
+
+    public string SettingsReadError => _settingsStore.LoadError?.Message ?? string.Empty;
+
     public string VersionText => $"v{AppInfo.VersionText}";
 
-    public async Task InitializeAsync()
+    public Task InitializeAsync() => _initializeTask ??= InitializeCoreAsync();
+
+    private async Task InitializeCoreAsync()
     {
-        if (_isInitialized)
+        _isInitialized = true;
+        if (_settingsStore.LoadError is { } error)
         {
+            StatusTitle = T("Settings.Validation.ReadFailed");
+            StatusMessage = error.Message;
+            StatusSeverity = InfoBarSeverity.Error;
+            AddLog(T("Log.Settings"), error.Message, "settings.error");
             return;
         }
-
-        _isInitialized = true;
-
+        ValidateGainInputs();
         await SyncStartupRegistrationAsync();
+        _audioMonitor.Start();
+        _connectionMonitor.Start();
+        _updates.Start(CheckUpdatesAutomatically);
+        ApplyUpdateState();
+    }
 
+    private void OnMonitoredSnapshot(object? sender, AudioEndpointSnapshot snapshot) => RunOnUiThread(() =>
+    {
+        if (_shutdown.IsCancellationRequested) return;
+        ApplyAudioSnapshot(snapshot);
+        if (snapshot.DeviceId.Length == 0) return;
+        if (!_audioSeeded)
+        {
+            _audioSeeded = true;
+            _lastObservedVolume = snapshot.Volume;
+            _lastObservedMute = snapshot.IsMuted;
+            _lastObservedDeviceId = snapshot.DeviceId;
+            _volumeRecovery.Seed(snapshot.Volume, RememberVolume ? _settings.InitialVolume : null);
+            QueueCurrentAudioSync();
+            AddLog(T("Log.Audio"), TF("Log.Monitoring", snapshot.DisplayName));
+            return;
+        }
+        if (_lastObservedDeviceId != snapshot.DeviceId)
+        {
+            var previousId = _lastObservedDeviceId;
+            _lastObservedDeviceId = snapshot.DeviceId;
+            OnAudioDeviceChanged(this, new AudioDeviceChangedEventArgs([snapshot.DeviceId],
+                previousId.Length == 0 ? [] : [previousId], AudioDeviceChangeKind.DefaultOutput));
+        }
+        if (snapshot.Volume != _lastObservedVolume)
+            OnAudioVolumeChanged(this, new AudioVolumeChangedEventArgs(_lastObservedVolume, snapshot.Volume));
+        if (snapshot.IsMuted != _lastObservedMute)
+            OnAudioMuteChanged(this, new AudioMuteChangedEventArgs(_lastObservedMute, snapshot.IsMuted));
+    });
+
+    private void OnConnectionReady(object? sender, IReadOnlyList<VoicemeeterBindingTarget> targets) => RunOnUiThread(() =>
+    {
+        if (_shutdown.IsCancellationRequested || _connectionMonitor.IsPaused) return;
+        _voicemeeterTargets.Clear();
+        foreach (var target in targets) _voicemeeterTargets[target.Id] = target;
+        LoadBindingTargets(targets.Where(target => target.IsAvailable));
+        StatusTitle = T("Status.VoicemeeterConnected");
+        StatusMessage = TF("Status.ConnectedTo", _voicemeeterClient.Edition);
+        StatusSeverity = InfoBarSeverity.Success;
+        AddLog(T("Log.Voicemeeter"), StatusMessage);
+        if (!_restartOnLaunchApplied && _settings.IsToggleEnabled("restart_audio_engine_on_app_launch"))
+        {
+            _restartOnLaunchApplied = true;
+            _work.Run(() => RestartAudioEngineCoreAsync(T("Log.RestartLaunch"), _shutdown.Token));
+        }
+        else QueueCurrentAudioSync();
+    });
+
+    [RelayCommand(CanExecute = nameof(CanEditSettings))]
+    private async Task RefreshStatusAsync()
+    {
         try
         {
-            await _audioEndpointService.StartAsync(_shutdown.Token);
+            await _audioMonitor.RefreshAsync(_shutdown.Token);
+            await _connectionMonitor.RefreshAsync(_shutdown.Token);
             ApplyAudioSnapshot(_audioEndpointService.Current);
-            _lastObservedVolume = _audioEndpointService.Current.Volume;
-            _volumeRecovery.Seed(
-                RecoveryVolumeFromSnapshot(_audioEndpointService.Current),
-                RememberVolume ? _settings.InitialVolume : null);
-            _lastObservedMute = _audioEndpointService.Current.IsMuted;
-            StartFallbackPolling();
-            StatusTitle = T("Status.WindowsAudioConnected");
-            StatusMessage = T("Status.EndpointCallbacks");
+            StatusTitle = T("Status.RefreshedTitle");
+            StatusMessage = T("Status.RefreshedMessage");
             StatusSeverity = InfoBarSeverity.Success;
-            AddLog(T("Log.Audio"), TF("Log.Monitoring", _audioEndpointService.Current.DisplayName));
+            AddLog(T("Log.Status"), StatusMessage);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            WindowsAudioStatus = T("Common.Error");
-            WindowsAudioDetail = ex.Message;
-            StatusTitle = T("Status.AudioServiceFailed");
+            StatusTitle = T("Common.Error");
             StatusMessage = ex.Message;
             StatusSeverity = InfoBarSeverity.Error;
-            AddLog(T("Log.Audio"), TF("Log.FailedStart", ex.Message));
         }
-
-        StartAutoConnect();
-        _ = CheckForUpdatesAsync();
     }
 
-    [RelayCommand]
-    private void RefreshStatus()
-    {
-        AddLog(T("Log.Status"), T("Status.RefreshedTitle"));
-        StatusTitle = T("Status.RefreshedTitle");
-        StatusMessage = T("Status.RefreshedMessage");
-        StatusSeverity = InfoBarSeverity.Success;
-    }
-
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanEditSettings))]
     private async Task ConnectVoicemeeterAsync()
     {
         await ConnectVoicemeeterAsync(isAutomatic: false);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanEditSettings))]
     private async Task ToggleVoicemeeterConnectionAsync()
     {
         if (_voicemeeterClient.State == VoicemeeterConnectionState.Connected)
@@ -308,122 +371,31 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private async Task ConnectVoicemeeterAsync(bool isAutomatic)
     {
-        var lockTaken = false;
-        try
+        try { await _connectionMonitor.ConnectAsync(_shutdown.Token); }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await _voicemeeterConnectionLock.WaitAsync(_shutdown.Token);
-            lockTaken = true;
-            if (!isAutomatic)
-            {
-                _manualDisconnectRequested = false;
-                SignalAutoConnect();
-            }
-
-            if (_voicemeeterClient.State == VoicemeeterConnectionState.Connected)
-            {
-                await RefreshVoicemeeterTargetsAsync();
-                QueueCurrentAudioSync();
-                return;
-            }
-
-            VoicemeeterStatus = T("Status.Connecting");
-            VoicemeeterDetail = T("Status.WaitingVoicemeeter");
-            StatusTitle = T("Status.ConnectingTitle");
-            StatusMessage = isAutomatic
-                ? T("Status.AutoConnecting")
-                : T("Status.OpenVoicemeeter");
-            StatusSeverity = InfoBarSeverity.Informational;
-            AddLog(T("Log.Voicemeeter"), isAutomatic ? T("Status.AutoConnecting") : T("Status.ConnectingTitle"));
-
-            await _voicemeeterClient.ConnectAsync(_shutdown.Token);
-            await RefreshVoicemeeterTargetsAsync();
-
-            VoicemeeterStatus = T("Status.Connected");
-            VoicemeeterDetail = _voicemeeterClient.Edition;
-            IsVoicemeeterConnected = true;
-            ConnectionStatusText = T("Status.VoicemeeterConnected");
-            VoicemeeterConnectionActionText = T("Common.Disconnect");
-            StatusTitle = T("Status.VoicemeeterConnected");
-            StatusMessage = TF("Status.ConnectedTo", _voicemeeterClient.Edition);
-            StatusSeverity = InfoBarSeverity.Success;
-            AddLog(T("Log.Voicemeeter"), TF("Status.ConnectedTo", _voicemeeterClient.Edition));
-            if (!_restartOnLaunchApplied && _settings.IsToggleEnabled("restart_audio_engine_on_app_launch"))
-            {
-                _restartOnLaunchApplied = true;
-                await RestartAudioEngineCoreAsync(T("Log.RestartLaunch"), _shutdown.Token);
-            }
-            else
-            {
-                QueueCurrentAudioSync();
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            AddLog(T("Log.Voicemeeter"), T("Log.ConnectionCancelled"));
-        }
-        catch (Exception ex)
-        {
-            VoicemeeterStatus = T("Common.Error");
-            VoicemeeterDetail = ex.Message;
-            IsVoicemeeterConnected = false;
-            ConnectionStatusText = T("Status.VoicemeeterDisconnected");
-            VoicemeeterConnectionActionText = T("Common.ConnectVoicemeeter");
-            StatusTitle = T("Status.ConnectionFailed");
-            StatusMessage = ex.Message;
-            StatusSeverity = InfoBarSeverity.Error;
-            LastVoicemeeterError = ex.Message;
-            AddLog(T("Log.Voicemeeter"), $"{T("Status.ConnectionFailed")}: {ex.Message}");
-        }
-        finally
-        {
-            if (lockTaken)
-            {
-                _voicemeeterConnectionLock.Release();
-            }
+            ReportVoicemeeterCommandFailure(T("Common.ConnectVoicemeeter"), ex);
         }
     }
 
     private async Task DisconnectVoicemeeterAsync()
     {
-        var lockTaken = false;
         try
         {
-            _manualDisconnectRequested = true;
-            await _voicemeeterConnectionLock.WaitAsync(_shutdown.Token);
-            lockTaken = true;
-            await _voicemeeterClient.DisconnectAsync(_shutdown.Token);
+            await _connectionMonitor.DisconnectAsync(_shutdown.Token);
             _voicemeeterTargets.Clear();
             UpdateSelectedTargetsCache();
-            VoicemeeterStatus = T("Status.Disconnected");
-            VoicemeeterDetail = T("Status.NativeClientDisconnected");
-            IsVoicemeeterConnected = false;
-            ConnectionStatusText = T("Status.VoicemeeterDisconnected");
-            VoicemeeterConnectionActionText = T("Common.ConnectVoicemeeter");
-            StatusTitle = T("Status.VoicemeeterDisconnected");
-            StatusMessage = T("Status.DisconnectedFromVoicemeeter");
-            StatusSeverity = InfoBarSeverity.Warning;
-            LastVolumeSyncText = T("Status.VolumePaused");
-            LastMuteSyncText = T("Status.MutePaused");
-            AddLog(T("Log.Voicemeeter"), T("Status.DisconnectedFromVoicemeeter"));
+            RefreshLiveDiagnostics();
         }
-        catch (OperationCanceledException)
-        {
-            AddLog(T("Log.Voicemeeter"), T("Log.DisconnectCancelled"));
-        }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             ReportVoicemeeterCommandFailure(T("Command.Disconnect"), ex);
         }
-        finally
-        {
-            if (lockTaken)
-            {
-                _voicemeeterConnectionLock.Release();
-            }
-        }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanEditSettings))]
     private async Task ShowVoicemeeterAsync()
     {
         try
@@ -432,13 +404,14 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             await _voicemeeterClient.ShowAsync(_shutdown.Token);
             AddLog(T("Log.Voicemeeter"), T("Log.ShowSent"));
         }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             ReportVoicemeeterCommandFailure(T("Command.Show"), ex);
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanEditSettings))]
     private async Task RestartAudioEngineAsync()
     {
         try
@@ -446,6 +419,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             await EnsureVoicemeeterConnectedAsync();
             await RestartAudioEngineCoreAsync(T("Log.RestartCommand"), _shutdown.Token);
         }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             ReportVoicemeeterCommandFailure(T("Command.RestartEngine"), ex);
@@ -454,12 +428,12 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     partial void OnStartWithWindowsChanged(bool value)
     {
-        if (_isLoading)
+        if (_isLoading || !CanEditSettings)
         {
             return;
         }
 
-        _ = SetStartWithWindowsAsync(value);
+        _work.Run(() => SetStartWithWindowsAsync(value));
     }
     partial void OnCloseToTrayChanged(bool value)
     {
@@ -471,7 +445,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     }
     partial void OnLogoVariantChanged(string value)
     {
-        if (_isLoading)
+        if (_isLoading || !CanEditSettings)
         {
             return;
         }
@@ -495,7 +469,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     partial void OnLayoutModeChanged(string value)
     {
-        if (_isLoading)
+        if (_isLoading || !CanEditSettings)
         {
             return;
         }
@@ -513,7 +487,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     partial void OnLanguageChanged(string value)
     {
-        if (_isLoading)
+        if (_isLoading || !CanEditSettings)
         {
             return;
         }
@@ -529,26 +503,60 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         LocalizationService.Current.SetLanguage(normalized);
         RefreshLocalizedOptions();
         RefreshLocalizedState();
-        _ = RefreshBindingTargetLocalizationAsync();
-        SaveSettings(T("Setting.Language"));
+        _work.Run(RefreshBindingTargetLocalizationAsync);
+        SaveSettings(T("Setting.Language"), logSuccess: false);
     }
 
     partial void OnHideSupportPageChanged(bool value) =>
         SaveBoolean(value, setting => setting.HideSupportPage = value, T("Setting.SupportVisibility"));
 
-    partial void OnSyncMuteChanged(bool value) => SaveBoolean(value, setting => setting.SyncMute = value, T("Setting.SyncMute"));
+    partial void OnSyncMuteChanged(bool value)
+    {
+        SaveBoolean(value, setting => setting.SyncMute = value, T("Setting.SyncMute"), sync: value);
+        if (!value) _muteSyncFailure = null;
+        RefreshLiveDiagnostics();
+    }
     partial void OnRememberVolumeChanged(bool value) => SaveBoolean(value, setting => setting.RememberVolume = value, T("Setting.RememberVolume"));
-    partial void OnLimitDbGainToZeroChanged(bool value) => SaveBoolean(value, setting => setting.LimitDbGainToZero = value, T("Setting.LimitGain"));
-    partial void OnLinearVolumeScaleChanged(bool value) => SaveToggle("linear_volume_scale", value, T("Setting.LinearScale"));
+    partial void OnLimitDbGainToZeroChanged(bool value) => SaveBoolean(value, setting => setting.LimitDbGainToZero = value, T("Setting.LimitGain"), sync: true);
+    partial void OnLinearVolumeScaleChanged(bool value) => SaveToggle("linear_volume_scale", value, T("Setting.LinearScale"), sync: true);
     partial void OnPreventVolumeSpikesChanged(bool value) => SaveToggle("apply_volume_fix", value, T("Setting.PreventSpikes"));
     partial void OnRestartOnDeviceChangeChanged(bool value) => SaveToggle("restart_audio_engine_on_device_change", value, T("Setting.RestartDevice"));
     partial void OnRestartOnAnyDeviceChangeChanged(bool value) => SaveToggle("restart_audio_engine_on_any_device_change", value, T("Setting.RestartAnyDevice"));
     partial void OnRestartOnResumeChanged(bool value) => SaveToggle("restart_audio_engine_on_resume", value, T("Setting.RestartResume"));
     partial void OnApplyCrackleFixChanged(bool value) => SaveToggle("apply_crackle_fix", value, T("Setting.CrackleFix"));
 
-    partial void OnGainMinChanged(double value) => SaveNumber(setting => setting.GainMin = value, T("Setting.MinimumGain"));
-    partial void OnGainMaxChanged(double value) => SaveNumber(setting => setting.GainMax = value, T("Setting.MaximumGain"));
-    partial void OnPollingRateChanged(double value) => SaveNumber(setting => setting.PollingRate = (int)Math.Round(value), T("Setting.FallbackPolling"));
+    partial void OnGainMinChanged(double value) => SaveGainInputs(T("Setting.MinimumGain"));
+    partial void OnGainMaxChanged(double value) => SaveGainInputs(T("Setting.MaximumGain"));
+    partial void OnPollingRateChanged(double value)
+    {
+        if (!double.IsFinite(value) || value < 25 || value > 10000) return;
+        SaveNumber(setting => setting.PollingRate = (int)Math.Round(value), T("Setting.FallbackPolling"));
+    }
+
+    private bool ValidateGainInputs()
+    {
+        var valid = VolumeMapper.IsValidRange(GainMin, GainMax);
+        GainValidationMessage = valid ? string.Empty : T("Settings.Validation.GainRange");
+        RefreshLiveDiagnostics();
+        return valid;
+    }
+
+    private void SaveGainInputs(string label)
+    {
+        if (_isLoading || !CanEditSettings || !ValidateGainInputs()) return;
+        _settings.GainMin = GainMin;
+        _settings.GainMax = GainMax;
+        SaveSettings(label);
+        QueueCurrentAudioSync();
+    }
+
+    partial void OnCheckUpdatesAutomaticallyChanged(bool value)
+    {
+        if (_isLoading || !CanEditSettings) return;
+        _updates.SetAutomatic(value);
+        SaveBoolean(value, setting => setting.CheckUpdatesAutomatically = value, T("Settings.Updates.Automatic"));
+        _work.Run(() => _updates.CheckAsync(false));
+    }
 
     private async Task SetStartWithWindowsAsync(bool value)
     {
@@ -558,6 +566,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             SaveBoolean(value, setting => setting.StartWithWindows = value, T("Setting.StartWithWindows"), saveImmediately: true);
             AddLog(T("Log.Startup"), T(value ? "Log.StartupEnabled" : "Log.StartupDisabled"));
         }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             AddLog(T("Log.Startup"), TF("Log.StartupUpdateFailed", ex.Message));
@@ -574,6 +583,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             await _startupService.SetEnabledAsync(_settings.StartWithWindows, _shutdown.Token);
             AddLog(T("Log.Startup"), T(_settings.StartWithWindows ? "Log.StartupVerified" : "Log.StartupDisabled"));
         }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             AddLog(T("Log.Startup"), TF("Log.StartupVerifyFailed", ex.Message));
@@ -590,6 +600,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         LayoutMode = NormalizeLayoutMode(_settings.LayoutMode);
         Language = NormalizeLanguage(_settings.Language);
         HideSupportPage = _settings.HideSupportPage;
+        CheckUpdatesAutomatically = _settings.CheckUpdatesAutomatically;
         SyncMute = _settings.SyncMute;
         RememberVolume = _settings.RememberVolume;
         LimitDbGainToZero = _settings.LimitDbGainToZero;
@@ -665,6 +676,14 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(RestartOnAnyDeviceChange));
         OnPropertyChanged(nameof(RestartOnResume));
         OnPropertyChanged(nameof(HideSupportPage));
+        OnPropertyChanged(nameof(CheckUpdatesAutomatically));
+        VoicemeeterStatus = LocalizeConnectionState(_voicemeeterClient.State);
+        VoicemeeterDetail = IsVoicemeeterConnected ? _voicemeeterClient.Edition
+            : T(_connectionMonitor.IsPaused ? "Status.NativeClientDisconnected" : "Status.ReconnectSession");
+        OnPropertyChanged(nameof(ApplyCrackleFix));
+        ApplyAudioSnapshot(_audioEndpointService.Current);
+        ApplyUpdateState();
+        ValidateGainInputs();
     }
 
     private async Task RefreshBindingTargetLocalizationAsync()
@@ -689,36 +708,40 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private async Task CheckForUpdatesAsync()
+    [RelayCommand(CanExecute = nameof(CanEditSettings))]
+    private Task CheckForUpdatesAsync() => _updates.CheckAsync(true);
+
+    public void RefreshRegionalFormats()
     {
-        try
+        ApplyUpdateState();
+        RefreshLiveDiagnostics();
+        foreach (var entry in Diagnostics) entry.RefreshTimeText();
+    }
+
+    private void ApplyUpdateState()
+    {
+        var state = _updates.State;
+        IsCheckingForUpdates = state.Status == UpdateStatus.Checking;
+        IsUpdateAvailable = state.Status == UpdateStatus.Available;
+        UpdateTitle = state.Status switch
         {
-            var result = await _updateService.CheckAsync(AppInfo.Version, _shutdown.Token);
-            RunOnUiThread(() =>
-            {
-                LatestReleaseUri = result.ReleasePage;
-                IsUpdateAvailable = result.IsUpdateAvailable;
-                UpdateTitle = result.IsUpdateAvailable
-                    ? TF("Settings.Updates.AvailableTitle", result.LatestVersion)
-                    : T("Settings.Updates.CurrentTitle");
-                UpdateMessage = result.IsUpdateAvailable
-                    ? TF("Settings.Updates.AvailableMessage", AppInfo.VersionText)
-                    : TF("Settings.Updates.CurrentMessage", AppInfo.VersionText);
-            });
-        }
-        catch (OperationCanceledException)
+            UpdateStatus.Checking => T("Settings.Updates.CheckingTitle"),
+            UpdateStatus.Available => TF("Settings.Updates.AvailableTitle", state.Result!.LatestVersion),
+            UpdateStatus.Current => T("Settings.Updates.CurrentTitle"),
+            UpdateStatus.Failed => T("Settings.Updates.FailedTitle"),
+            _ => T("Settings.Updates.NotChecked")
+        };
+        UpdateMessage = state.Status switch
         {
-        }
-        catch (Exception ex)
-        {
-            RunOnUiThread(() =>
-            {
-                IsUpdateAvailable = false;
-                UpdateTitle = T("Settings.Updates.FailedTitle");
-                UpdateMessage = TF("Settings.Updates.FailedMessage", AppInfo.VersionText);
-                AddLog(T("Log.Runtime"), TF("Log.UpdateFailed", ex.Message));
-            });
-        }
+            UpdateStatus.Checking => T("Settings.Updates.CheckingMessage"),
+            UpdateStatus.Available => TF("Settings.Updates.AvailableMessage", AppInfo.VersionText),
+            UpdateStatus.Current => TF("Settings.Updates.CurrentMessage", AppInfo.VersionText),
+            UpdateStatus.Failed => TF("Settings.Updates.FailedMessage", AppInfo.VersionText),
+            _ => string.Empty
+        };
+        LastUpdateCheckText = TF("Settings.Updates.LastChecks",
+            state.LastAttempt is { } attempt ? WindowsRegionalFormats.FormatDateTime(attempt) : T("Common.Never"),
+            state.LastSuccess is { } success ? WindowsRegionalFormats.FormatDateTime(success) : T("Common.Never"));
     }
 
     private void LoadBindingTargets()
@@ -798,7 +821,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             deviceName,
             glyph,
             iconName,
-            true,
+            CanEditSettings,
             _settings.IsToggleEnabled(id),
             OnBindingTargetChanged);
 
@@ -829,7 +852,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private void OnBindingTargetChanged(BindingTargetItem item, bool value)
     {
-        if (_isLoading)
+        if (_isLoading || !CanEditSettings)
         {
             return;
         }
@@ -844,31 +867,33 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private void SaveBoolean(bool value, Action<AppSettings> update, string label, bool saveImmediately = false)
+    private void SaveBoolean(bool value, Action<AppSettings> update, string label, bool saveImmediately = false, bool sync = false)
     {
-        if (_isLoading)
+        if (_isLoading || !CanEditSettings)
         {
             return;
         }
 
         update(_settings);
         SaveSettings(label, saveImmediately);
+        if (_isInitialized && sync) QueueCurrentAudioSync();
     }
 
-    private void SaveToggle(string settingId, bool value, string label)
+    private void SaveToggle(string settingId, bool value, string label, bool sync = false)
     {
-        if (_isLoading)
+        if (_isLoading || !CanEditSettings)
         {
             return;
         }
 
         _settings.SetToggle(settingId, value);
         SaveSettings(label);
+        if (_isInitialized && sync) QueueCurrentAudioSync();
     }
 
     private void SaveNumber(Action<AppSettings> update, string label)
     {
-        if (_isLoading)
+        if (_isLoading || !CanEditSettings)
         {
             return;
         }
@@ -877,243 +902,41 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         SaveSettings(label);
     }
 
-    private void SaveSettings(string label, bool saveImmediately = false)
+    private void SaveSettings(string label, bool saveImmediately = false, bool logSuccess = true)
     {
-        if (saveImmediately)
-        {
-            _settingsStore.Save(_settings);
-            ClearPendingSettingsSave();
-        }
-        else
+        if (_shutdown.IsCancellationRequested || _settingsStore.LoadError is not null) return;
+        try
         {
             var payload = _settingsStore.CreateSavePayload(_settings);
-            QueueSettingsSave(payload);
+            _work.Run(() => _settingsWriter.QueueAsync(payload, saveImmediately));
+            if (logSuccess) AddLog(T("Log.Settings"), TF("Log.SettingSaved", label));
         }
-
-        AddLog(T("Log.Settings"), TF("Log.SettingSaved", label));
+        catch (Exception ex)
+        {
+            AddLog(T("Log.Settings"), TF("Log.SettingsSaveFailed", ex.Message), "settings.error");
+        }
     }
 
     private void QueueSettingsSave(string payload)
     {
-        CancellationTokenSource debounce;
-        lock (_settingsSaveLock)
-        {
-            _pendingSettingsPayload = payload;
-            _settingsSaveDebounce?.Cancel();
-            _settingsSaveDebounce?.Dispose();
-            _settingsSaveDebounce = new CancellationTokenSource();
-            debounce = _settingsSaveDebounce;
-        }
-
-        _ = SaveSettingsAfterDebounceAsync(debounce);
-    }
-
-    private async Task SaveSettingsAfterDebounceAsync(CancellationTokenSource debounce)
-    {
-        try
-        {
-            await Task.Delay(SettingsSaveDebounceDelay, debounce.Token);
-
-            string? payload;
-            lock (_settingsSaveLock)
-            {
-                if (!ReferenceEquals(_settingsSaveDebounce, debounce))
-                {
-                    return;
-                }
-
-                payload = _pendingSettingsPayload;
-                _pendingSettingsPayload = null;
-                _settingsSaveDebounce = null;
-            }
-
-            if (payload is not null)
-            {
-                await _settingsStore.SavePayloadAsync(payload, CancellationToken.None);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            RunOnUiThread(() => AddLog(T("Log.Settings"), TF("Log.SettingsSaveFailed", ex.Message)));
-        }
-        finally
-        {
-            debounce.Dispose();
-        }
-    }
-
-    private async Task FlushSettingsSaveAsync()
-    {
-        string? payload;
-        lock (_settingsSaveLock)
-        {
-            _settingsSaveDebounce?.Cancel();
-            _settingsSaveDebounce = null;
-            payload = _pendingSettingsPayload;
-            _pendingSettingsPayload = null;
-        }
-
-        if (payload is not null)
-        {
-            await _settingsStore.SavePayloadAsync(payload, CancellationToken.None);
-        }
-    }
-
-    private void ClearPendingSettingsSave()
-    {
-        lock (_settingsSaveLock)
-        {
-            _settingsSaveDebounce?.Cancel();
-            _settingsSaveDebounce = null;
-            _pendingSettingsPayload = null;
-        }
-    }
-
-    private void StartAutoConnect()
-    {
-        if (_autoConnectStarted)
-        {
-            return;
-        }
-
-        _autoConnectStarted = true;
-        _ = AutoConnectVoicemeeterAsync();
-        SignalAutoConnect();
-    }
-
-    private void StartFallbackPolling()
-    {
-        if (_fallbackPollingStarted)
-        {
-            return;
-        }
-
-        _fallbackPollingStarted = true;
-        _lastAudioCallback = DateTimeOffset.Now;
-        _ = PollAudioFallbackAsync();
-    }
-
-    private async Task PollAudioFallbackAsync()
-    {
-        while (!_shutdown.IsCancellationRequested)
-        {
-            var delay = TimeSpan.FromMilliseconds(Math.Clamp((int)Math.Round(PollingRate), 25, 10_000));
-            try
-            {
-                await Task.Delay(delay, _shutdown.Token);
-                if (DateTimeOffset.Now - _lastAudioCallback < TimeSpan.FromSeconds(5))
-                {
-                    continue;
-                }
-
-                await _audioEndpointService.RefreshAsync(_shutdown.Token);
-                var snapshot = _audioEndpointService.Current;
-                if (snapshot.DeviceId.Length == 0)
-                {
-                    continue;
-                }
-
-                if (snapshot.Volume != _lastObservedVolume)
-                {
-                    var oldVolume = _lastObservedVolume;
-                    _lastObservedVolume = snapshot.Volume;
-                    OnAudioVolumeChanged(this, new AudioVolumeChangedEventArgs(oldVolume, snapshot.Volume));
-                }
-
-                if (snapshot.IsMuted != _lastObservedMute)
-                {
-                    var oldMute = _lastObservedMute;
-                    _lastObservedMute = snapshot.IsMuted;
-                    OnAudioMuteChanged(this, new AudioMuteChangedEventArgs(oldMute, snapshot.IsMuted));
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch (Exception ex)
-            {
-                RunOnUiThread(() => AddLog(T("Log.Audio"), TF("Log.PollingFailed", ex.Message)));
-            }
-        }
-    }
-
-    private async Task AutoConnectVoicemeeterAsync()
-    {
-        var delay = TimeSpan.FromSeconds(10);
-        while (!_shutdown.IsCancellationRequested)
-        {
-            if (_manualDisconnectRequested || _voicemeeterClient.State == VoicemeeterConnectionState.Connected)
-            {
-                try
-                {
-                    await _autoConnectSignal.WaitAsync(_shutdown.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-
-                continue;
-            }
-
-            await ConnectVoicemeeterAsync(isAutomatic: true);
-            if (_voicemeeterClient.State == VoicemeeterConnectionState.Connected)
-            {
-                delay = TimeSpan.FromSeconds(10);
-                continue;
-            }
-
-            RunOnUiThread(() =>
-            {
-                VoicemeeterStatus = T("Status.Disconnected");
-                VoicemeeterDetail = TF("Status.RetryIn", delay.TotalSeconds);
-                StatusTitle = T("Status.VoicemeeterDisconnected");
-                StatusMessage = T("Status.WaitingAvailability");
-                StatusSeverity = InfoBarSeverity.Warning;
-            });
-
-            try
-            {
-                await Task.Delay(delay, _shutdown.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-        }
-    }
-
-    private void SignalAutoConnect()
-    {
-        try
-        {
-            _autoConnectSignal.Release();
-        }
-        catch (SemaphoreFullException)
-        {
-        }
+        if (!_shutdown.IsCancellationRequested) _work.Run(() => _settingsWriter.QueueAsync(payload));
     }
 
     private void UpdateDefinedBindings()
     {
         var active = BindingTargets.Where(item => item.IsEnabled).ToList();
-        var activeStrips = active.Where(item => item.Id.StartsWith("Strip_", StringComparison.OrdinalIgnoreCase)).Select(item => item.Name).ToList();
-        var activeBuses = active.Where(item => item.Id.StartsWith("Bus_", StringComparison.OrdinalIgnoreCase)).Select(item => item.Name).ToList();
-
         DefinedStripBindings.Clear();
-        foreach (var name in activeStrips)
-        {
-            DefinedStripBindings.Add(name);
-        }
-
         DefinedBusBindings.Clear();
-        foreach (var name in activeBuses)
+        foreach (var item in active)
         {
-            DefinedBusBindings.Add(name);
+            if (item.Id.StartsWith("Strip_", StringComparison.OrdinalIgnoreCase))
+            {
+                DefinedStripBindings.Add(item);
+            }
+            else if (item.Id.StartsWith("Bus_", StringComparison.OrdinalIgnoreCase))
+            {
+                DefinedBusBindings.Add(item);
+            }
         }
 
         HasDefinedStripBindings = DefinedStripBindings.Count > 0;
@@ -1183,18 +1006,17 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             _ => T("Recovery.VolumeRecovery")
         };
 
-    private void AddLog(string category, string message)
+    private void AddLog(string category, string message, string eventId = "activity")
     {
         if (App.DispatcherQueue is not null && !App.DispatcherQueue.HasThreadAccess)
         {
-            App.DispatcherQueue.TryEnqueue(() => AddLog(category, message));
+            App.DispatcherQueue.TryEnqueue(() => AddLog(category, message, eventId));
             return;
         }
 
-        var entry = new DiagnosticLogEntry(DateTimeOffset.Now, category, message);
+        var entry = new DiagnosticLogEntry(DateTimeOffset.Now, category, message, eventId);
         AddLogEntry(Diagnostics, entry, MaxDiagnosticEntries);
-        AddLogEntry(RecentEvents, entry, MaxRecentEventEntries);
-        QueuePersistentLog(entry);
+        _logWriter.Enqueue(new DiagnosticRecord(entry.Time, eventId, category, message));
     }
 
     private static void AddLogEntry(ObservableCollection<DiagnosticLogEntry> entries, DiagnosticLogEntry entry, int maxEntries)
@@ -1212,26 +1034,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private static bool IsVolumeChanged(DiagnosticLogEntry entry) =>
-        entry.Category.Equals("Audio", StringComparison.OrdinalIgnoreCase)
-        && entry.Message.StartsWith("Volume changed ", StringComparison.Ordinal);
-
-    private static void QueuePersistentLog(DiagnosticLogEntry entry)
-    {
-        _ = Task.Run(() =>
-        {
-            try
-            {
-                Directory.CreateDirectory(AppSettingsPaths.DefaultLogsFolder);
-                var logPath = Path.Combine(AppSettingsPaths.DefaultLogsFolder, $"{DateTimeOffset.Now:yyyy-MM-dd}.log");
-                var line = $"{entry.Time:O}\t{entry.Category}\t{entry.Message}{Environment.NewLine}";
-                File.AppendAllText(logPath, line);
-            }
-            catch
-            {
-            }
-        });
-    }
+    private static bool IsVolumeChanged(DiagnosticLogEntry entry) => entry.EventId == "volume.changed";
 
     private void AttachServiceEvents()
     {
@@ -1243,7 +1046,12 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private void OnAudioVolumeChanged(object? sender, AudioVolumeChangedEventArgs args)
     {
-        _lastAudioCallback = DateTimeOffset.Now;
+        if (_shutdown.IsCancellationRequested) return;
+        if (App.DispatcherQueue is { HasThreadAccess: false })
+        {
+            RunOnUiThread(() => OnAudioVolumeChanged(sender, args));
+            return;
+        }
         var recoveryDecision = _volumeRecovery.ObserveVolumeChange(
             args.OldVolume,
             args.NewVolume,
@@ -1267,9 +1075,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
         RunOnUiThread(() =>
         {
-            WindowsAudioStatus = $"{args.NewVolume}%";
-            WindowsAudioDetail = _audioEndpointService.Current.DisplayName;
-            AddLog(T("Log.Audio"), TF("Log.VolumeChanged", args.OldVolume, args.NewVolume));
+            ApplyAudioSnapshot(_audioEndpointService.Current with { Volume = args.NewVolume });
+            AddLog(T("Log.Audio"), TF("Log.VolumeChanged", args.OldVolume, args.NewVolume), "volume.changed");
         });
 
         QueueVolumeSync(args.NewVolume);
@@ -1277,11 +1084,16 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private void OnAudioMuteChanged(object? sender, AudioMuteChangedEventArgs args)
     {
-        _lastAudioCallback = DateTimeOffset.Now;
+        if (_shutdown.IsCancellationRequested) return;
+        if (App.DispatcherQueue is { HasThreadAccess: false })
+        {
+            RunOnUiThread(() => OnAudioMuteChanged(sender, args));
+            return;
+        }
         _lastObservedMute = args.IsMuted;
         RunOnUiThread(() =>
         {
-            WindowsAudioDetail = $"{_audioEndpointService.Current.DisplayName} - {T(args.IsMuted ? "Common.Muted" : "Common.Unmuted")}";
+            ApplyAudioSnapshot(_audioEndpointService.Current with { IsMuted = args.IsMuted });
             AddLog(T("Log.Audio"), T(args.IsMuted ? "Common.Muted" : "Common.Unmuted"));
         });
 
@@ -1293,46 +1105,59 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private void OnAudioDeviceChanged(object? sender, AudioDeviceChangedEventArgs args)
     {
+        if (_shutdown.IsCancellationRequested) return;
+        if (App.DispatcherQueue is { HasThreadAccess: false })
+        {
+            RunOnUiThread(() => OnAudioDeviceChanged(sender, args));
+            return;
+        }
+        _lastObservedDeviceId = _audioEndpointService.Current.DeviceId;
         RunOnUiThread(() =>
         {
             ApplyAudioSnapshot(_audioEndpointService.Current);
             AddLog(T("Log.Audio"), TF("Log.DeviceChanged", args.Added.Count, args.Removed.Count));
         });
 
-        if (RestartOnDeviceChange || RestartOnAnyDeviceChange)
+        if (RestartOnAnyDeviceChange || RestartOnDeviceChange && args.Kind == AudioDeviceChangeKind.DefaultOutput)
         {
             QueueAudioDeviceRecovery();
         }
     }
 
-    public async Task HandleSystemResumeAsync()
+    public void QueueSystemResume() => _work.Run(HandleSystemResumeAsync);
+
+    private async Task HandleSystemResumeAsync()
     {
+        if (!CanEditSettings) return;
         AddLog(T("Log.System"), T("Log.ResumeDetected"));
         try
         {
-            await _audioEndpointService.RefreshAsync(_shutdown.Token);
+            await _audioMonitor.RefreshAsync(_shutdown.Token);
             RunOnUiThread(() => ApplyAudioSnapshot(_audioEndpointService.Current));
         }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             RunOnUiThread(() => AddLog(T("Log.Audio"), TF("Log.ResumeRefreshFailed", ex.Message)));
         }
 
-        _manualDisconnectRequested = false;
-        if (RestartOnResume && _voicemeeterClient.State == VoicemeeterConnectionState.Connected)
+        if (RestartOnResume && !_connectionMonitor.IsPaused && _voicemeeterClient.State == VoicemeeterConnectionState.Connected)
         {
             try
             {
                 await RestartAudioEngineCoreAsync(T("Log.RestartResume"), _shutdown.Token);
                 return;
             }
+            catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 RunOnUiThread(() => AddLog(T("Log.Audio"), TF("Log.ResumeRecoveryFailed", ex.Message)));
             }
         }
 
-        RequestVoicemeeterRecovery();
+        try { await _connectionMonitor.RefreshAsync(_shutdown.Token); }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { return; }
+        catch (Exception ex) { ReportVoicemeeterCommandFailure(T("Common.ConnectVoicemeeter"), ex); }
         QueueCurrentAudioSync();
     }
 
@@ -1342,12 +1167,11 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         lock (_voicemeeterSyncLock)
         {
             _deviceRecoveryDebounce?.Cancel();
-            _deviceRecoveryDebounce?.Dispose();
             _deviceRecoveryDebounce = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
             debounce = _deviceRecoveryDebounce;
         }
 
-        _ = RecoverFromAudioDeviceChangeAsync(debounce);
+        _work.Run(() => RecoverFromAudioDeviceChangeAsync(debounce));
     }
 
     private async Task RecoverFromAudioDeviceChangeAsync(CancellationTokenSource debounce)
@@ -1393,7 +1217,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         RunOnUiThread(() =>
         {
             VoicemeeterStatus = LocalizeConnectionState(args.NewState);
-            VoicemeeterDetail = args.Message ?? _voicemeeterClient.Edition;
+            VoicemeeterDetail = args.Message ?? (args.NewState == VoicemeeterConnectionState.Connected
+                ? _voicemeeterClient.Edition : T("Status.NativeClientDisconnected"));
             IsVoicemeeterConnected = args.NewState == VoicemeeterConnectionState.Connected;
             if (!string.IsNullOrWhiteSpace(args.Message) && args.NewState == VoicemeeterConnectionState.Error)
             {
@@ -1406,12 +1231,13 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             VoicemeeterConnectionActionText = IsVoicemeeterConnected
                 ? T("Common.Disconnect")
                 : T("Common.ConnectVoicemeeter");
+            RefreshLiveDiagnostics();
         });
     }
 
     private void QueueVolumeSync(int windowsVolume)
     {
-        if (_voicemeeterClient.State != VoicemeeterConnectionState.Connected)
+        if (_shutdown.IsCancellationRequested || _connectionMonitor.IsPaused || _voicemeeterClient.State != VoicemeeterConnectionState.Connected)
         {
             return;
         }
@@ -1429,7 +1255,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
         if (shouldStartWorker)
         {
-            _ = ProcessPendingVolumeSyncAsync();
+            _work.Run(ProcessPendingVolumeSyncAsync);
         }
     }
 
@@ -1473,15 +1299,17 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private async Task SyncVolumeToVoicemeeterAsync(int windowsVolume)
     {
+        if (_connectionMonitor.IsPaused || _shutdown.IsCancellationRequested) return;
         if (_voicemeeterClient.State != VoicemeeterConnectionState.Connected)
         {
             return;
         }
 
+        if (!VolumeMapper.IsValidRange(_settings.GainMin, _settings.GainMax)) return;
         var gain = VolumeMapper.ToVoicemeeterGain(
             windowsVolume,
-            GainMin,
-            GainMax,
+            _settings.GainMin,
+            _settings.GainMax,
             LimitDbGainToZero,
             LinearVolumeScale);
 
@@ -1494,16 +1322,16 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         try
         {
             await _voicemeeterClient.SetGainAsync(targets, gain, _shutdown.Token);
-            RunOnUiThread(() =>
-            {
-                LastVolumeSyncText = TF("Status.GainSync", targets.Count, gain, DateTimeOffset.Now);
-            });
+            ClearVolumeSyncFailure();
         }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             RunOnUiThread(() =>
             {
                 LastVoicemeeterError = ex.Message;
+                _volumeSyncFailure = ex.Message;
+                RefreshLiveDiagnostics();
                 AddLog(T("Log.Voicemeeter"), TF("Log.GainSyncFailed", ex.Message));
             });
             RequestVoicemeeterRecovery();
@@ -1530,7 +1358,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
         if (shouldStartWorker)
         {
-            _ = ProcessPendingMuteSyncAsync();
+            _work.Run(ProcessPendingMuteSyncAsync);
         }
     }
 
@@ -1574,6 +1402,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private async Task SyncMuteToVoicemeeterAsync(bool isMuted)
     {
+        if (!SyncMute || _connectionMonitor.IsPaused || _shutdown.IsCancellationRequested) return;
         if (_voicemeeterClient.State != VoicemeeterConnectionState.Connected)
         {
             return;
@@ -1588,20 +1417,16 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         try
         {
             await _voicemeeterClient.SetMuteAsync(targets, isMuted, _shutdown.Token);
-            RunOnUiThread(() =>
-            {
-                LastMuteSyncText = TF(
-                    "Status.MuteSync",
-                    targets.Count,
-                    T(isMuted ? "Common.Muted" : "Common.Unmuted"),
-                    DateTimeOffset.Now);
-            });
+            ClearMuteSyncFailure();
         }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             RunOnUiThread(() =>
             {
                 LastVoicemeeterError = ex.Message;
+                _muteSyncFailure = ex.Message;
+                RefreshLiveDiagnostics();
                 AddLog(T("Log.Voicemeeter"), TF("Log.MuteSyncFailed", ex.Message));
             });
             RequestVoicemeeterRecovery();
@@ -1632,6 +1457,12 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             _selectedTargets = selectedTargets;
         }
 
+        if (selectedTargets.Count == 0)
+        {
+            _volumeSyncFailure = null;
+            _muteSyncFailure = null;
+        }
+
         var activeNames = BindingTargets
             .Where(item => item.IsEnabled)
             .Select(item => item.Name)
@@ -1639,10 +1470,12 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         ActiveTargetsText = activeNames.Count == 0
             ? T("Status.NoActiveTargets")
             : TF("Status.ActiveTargets", activeNames.Count, string.Join(", ", activeNames));
+        RefreshLiveDiagnostics();
     }
 
     private async Task EnsureVoicemeeterConnectedAsync()
     {
+        if (!CanEditSettings) throw new InvalidOperationException(T("Settings.Validation.ReadFailed"));
         if (_voicemeeterClient.State != VoicemeeterConnectionState.Connected)
         {
             await ConnectVoicemeeterAsync();
@@ -1655,12 +1488,18 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         StatusMessage = ex.Message;
         StatusSeverity = InfoBarSeverity.Error;
         LastVoicemeeterError = ex.Message;
-        AddLog(T("Log.Voicemeeter"), $"{TF("Status.CommandFailed", command)}: {ex.Message}");
+        AddLog(T("Log.Voicemeeter"), $"{TF("Status.CommandFailed", command)}: {ex.Message}", "voicemeeter.error");
         RequestVoicemeeterRecovery();
     }
 
     private void QueueCurrentAudioSync()
     {
+        if (_shutdown.IsCancellationRequested) return;
+        if (App.DispatcherQueue is { HasThreadAccess: false })
+        {
+            RunOnUiThread(QueueCurrentAudioSync);
+            return;
+        }
         var snapshot = _audioEndpointService.Current;
         if (snapshot.DeviceId.Length == 0)
         {
@@ -1672,7 +1511,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        QueueVolumeSync(snapshot.Volume);
+        if (_audioSeeded && snapshot.Volume != _lastObservedVolume)
+            OnAudioVolumeChanged(this, new AudioVolumeChangedEventArgs(_lastObservedVolume, snapshot.Volume));
+        else
+            QueueVolumeSync(snapshot.Volume);
         if (SyncMute)
         {
             QueueMuteSync(snapshot.IsMuted);
@@ -1773,8 +1615,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             _lastObservedVolume = normalized;
             RunOnUiThread(() =>
             {
-                WindowsAudioStatus = $"{normalized}%";
-                WindowsAudioDetail = _audioEndpointService.Current.DisplayName;
+                ApplyAudioSnapshot(_audioEndpointService.Current with { Volume = normalized });
                 AddLog(T("Log.Audio"), TF("Log.RestoredVolume", normalized, reason));
             });
 
@@ -1783,6 +1624,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 QueueVolumeSync(normalized);
             }
         }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             RunOnUiThread(() => AddLog(T("Log.Audio"), TF("Log.RestoreVolumeFailed", reason, ex.Message)));
@@ -1795,7 +1637,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private void RequestVoicemeeterRecovery()
     {
-        if (_manualDisconnectRequested || _shutdown.IsCancellationRequested)
+        if (_connectionMonitor.IsPaused || _shutdown.IsCancellationRequested
+            || _voicemeeterClient.State == VoicemeeterConnectionState.Connected)
         {
             return;
         }
@@ -1809,7 +1652,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             VoicemeeterConnectionActionText = T("Common.ConnectVoicemeeter");
         });
 
-        SignalAutoConnect();
+        // ConnectionMonitor probes and retries until the engine becomes available.
     }
 
     private void ApplyAudioSnapshot(AudioEndpointSnapshot snapshot)
@@ -1817,7 +1660,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         WindowsAudioStatus = snapshot.DeviceId.Length == 0 ? T("Common.Unavailable") : $"{snapshot.Volume}%";
         WindowsAudioDetail = snapshot.DeviceId.Length == 0
             ? T("Status.NoEndpoint")
-            : $"{snapshot.DisplayName} - {T(snapshot.IsMuted ? "Common.Muted" : "Common.Unmuted")}";
+            : snapshot.IsMuted || snapshot.Volume == 0
+                ? $"{snapshot.DisplayName} - {T("Common.Muted")}" : snapshot.DisplayName;
+        RefreshLiveDiagnostics();
     }
 
     private static int RecoveryVolumeFromSnapshot(AudioEndpointSnapshot snapshot) =>
@@ -1834,24 +1679,41 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         App.DispatcherQueue.TryEnqueue(() => action());
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync() => new(_disposeTask ??= StopAsync());
+
+    private async Task StopAsync()
     {
-        await FlushSettingsSaveAsync();
-        _volumeRestoreRequests.Writer.TryComplete();
         _shutdown.Cancel();
+        OnPropertyChanged(nameof(CanEditSettings));
         _deviceRecoveryDebounce?.Cancel();
-        _deviceRecoveryDebounce?.Dispose();
-        _deviceRecoveryDebounce = null;
+        _volumeRestoreRequests.Writer.TryComplete();
         _audioEndpointService.VolumeChanged -= OnAudioVolumeChanged;
         _audioEndpointService.MuteChanged -= OnAudioMuteChanged;
         _audioEndpointService.DeviceChanged -= OnAudioDeviceChanged;
         _voicemeeterClient.ConnectionStateChanged -= OnVoicemeeterConnectionStateChanged;
+        _audioMonitor.HealthChanged -= OnMonitorHealthChanged;
+        _connectionMonitor.HealthChanged -= OnMonitorHealthChanged;
+        await _audioMonitor.DisposeAsync();
+        await _connectionMonitor.DisposeAsync();
+        await _updates.DisposeAsync();
+        var commands = new IAsyncRelayCommand[] { RefreshStatusCommand, ConnectVoicemeeterCommand,
+            ToggleVoicemeeterConnectionCommand, ShowVoicemeeterCommand, RestartAudioEngineCommand, CheckForUpdatesCommand };
+        try
+        {
+            await Task.WhenAll(commands.Select(command => command.ExecutionTask ?? Task.CompletedTask));
+        }
+        catch (OperationCanceledException) { }
+        if (_initializeTask is not null)
+        {
+            try { await _initializeTask; }
+            catch (OperationCanceledException) { }
+        }
+        await _work.StopAsync();
         await _volumeRestoreWorker;
+        await _settingsWriter.DisposeAsync();
         await _voicemeeterClient.DisposeAsync();
         await _audioEndpointService.DisposeAsync();
-        _volumeRestoreLock.Dispose();
-        _engineRestartLock.Dispose();
-        _shutdown.Dispose();
+        await _logWriter.DisposeAsync();
     }
 
     private sealed record VolumeRestoreRequest(int Volume, string Reason, bool SyncToVoicemeeter);

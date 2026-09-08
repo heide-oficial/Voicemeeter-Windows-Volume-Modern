@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Globalization;
+using VMWV.Infrastructure.Windows.Globalization;
 using System.Text.Json;
 
 namespace VMWV_App.Localization;
@@ -73,7 +74,7 @@ public sealed class LocalizationService
     }
 
     public string Format(string key, params object?[] arguments) =>
-        string.Format(CultureInfo.CurrentCulture, Get(key), arguments);
+        string.Format(WindowsRegionalFormats.Culture, Get(key), arguments);
 
     private bool ApplyLanguage(string? requestedLanguage, IReadOnlyDictionary<string, string> languageFiles)
     {

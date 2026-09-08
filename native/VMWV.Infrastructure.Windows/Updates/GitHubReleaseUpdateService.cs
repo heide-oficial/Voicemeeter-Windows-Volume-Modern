@@ -12,10 +12,13 @@ public sealed class GitHubReleaseUpdateService : IUpdateService
     private static readonly Uri LatestReleasePage = new(
         "https://github.com/heide-oficial/Voicemeeter-Windows-Volume-Modern/releases/latest");
     private static readonly HttpClient HttpClient = CreateHttpClient();
+    private readonly HttpClient _client;
+
+    public GitHubReleaseUpdateService(HttpClient? client = null) => _client = client ?? HttpClient;
 
     public async Task<UpdateCheckResult> CheckAsync(Version currentVersion, CancellationToken cancellationToken)
     {
-        using var response = await HttpClient.GetAsync(
+        using var response = await _client.GetAsync(
             LatestReleaseApi,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken).ConfigureAwait(false);
@@ -32,6 +35,8 @@ public sealed class GitHubReleaseUpdateService : IUpdateService
 
         var releasePage = root.TryGetProperty("html_url", out var htmlUrl)
             && Uri.TryCreate(htmlUrl.GetString(), UriKind.Absolute, out var parsedUri)
+            && parsedUri.Scheme == Uri.UriSchemeHttps && parsedUri.Host == "github.com"
+            && parsedUri.AbsolutePath.StartsWith("/heide-oficial/Voicemeeter-Windows-Volume-Modern/releases/", StringComparison.Ordinal)
                 ? parsedUri
                 : LatestReleasePage;
         return new UpdateCheckResult(latestVersion > currentVersion, latestVersion, releasePage);

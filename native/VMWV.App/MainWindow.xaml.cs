@@ -32,11 +32,16 @@ public sealed partial class MainWindow : Window
     private const uint TrayMenuShow = 1001;
     private const uint TrayMenuExit = 1002;
     private const uint WmCommand = 0x0111;
+    private const uint WmSettingChange = 0x001A;
     private const uint WmLButtonDoubleClick = 0x0203;
     private const uint WmPowerBroadcast = 0x0218;
     private const uint WmRButtonUp = 0x0205;
     private const int PbtApmResumeSuspend = 0x0007;
     private const int PbtApmResumeAutomatic = 0x0012;
+    private const int PbtApmSuspend = 0x0004;
+    private readonly VMWV.Core.Services.ResumeGate _resumeGate = new();
+    private Task? _exitTask;
+    private bool _shutdownComplete;
 
     private readonly JsonSettingsStore _settingsStore = new(AppSettingsPaths.DefaultSettingsPath);
     private readonly WindowProc _windowProc;
@@ -95,7 +100,7 @@ public sealed partial class MainWindow : Window
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern uint RegisterWindowMessageW(string lpString);
 
-    public MainWindow()
+    public MainWindow(bool background = false)
     {
         InitializeComponent();
         ApplyLocalizedWindowText();
@@ -114,12 +119,19 @@ public sealed partial class MainWindow : Window
 
         ApplyBrandIcon(_brandVariant);
         AppWindow.Closing += OnAppWindowClosing;
+        Activated += OnWindowActivated;
         ResizeWindow();
 
-        RootFrame.Navigate(typeof(MainPage));
+        if (!background) RootFrame.Navigate(typeof(MainPage));
     }
 
     private void OnLanguageChanged(object? sender, EventArgs e) => ApplyLocalizedWindowText();
+
+    private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (!_exitRequested && args.WindowActivationState != WindowActivationState.Deactivated)
+            MainPage.RefreshRegionalFormats();
+    }
 
     private void ApplyLocalizedWindowText()
     {
@@ -154,23 +166,14 @@ public sealed partial class MainWindow : Window
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
-        if (_exitRequested)
-        {
-            RemoveTrayIcon();
-            _ = DisposeSharedServicesAsync();
-            RestoreWindowProc();
-            return;
-        }
-
-        if (!_closeToTray)
-        {
-            RemoveTrayIcon();
-            _ = DisposeSharedServicesAsync();
-            RestoreWindowProc();
-            return;
-        }
-
+        if (_shutdownComplete) return;
         args.Cancel = true;
+        if (_exitRequested || !_closeToTray)
+        {
+            _exitTask ??= ExitCoreAsync();
+            return;
+        }
+
         AddTrayIcon();
         UnloadShellContent();
         ShowWindow(_hwnd, SwHide);
@@ -183,6 +186,7 @@ public sealed partial class MainWindow : Window
 
     public void RestoreAndActivate()
     {
+        if (_exitRequested) return;
         EnsureShellContent();
         Activate();
         ShowWindow(_hwnd, SwShow);
@@ -206,9 +210,6 @@ public sealed partial class MainWindow : Window
 
         RootFrame.Content = null;
         RootFrame.BackStack.Clear();
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
     }
 
     private void EnsureShellContent()
@@ -221,21 +222,48 @@ public sealed partial class MainWindow : Window
         RootFrame.Navigate(typeof(MainPage));
     }
 
-    private async void ExitApplication()
+    private void ExitApplication()
     {
         _exitRequested = true;
+        _exitTask ??= ExitCoreAsync();
+    }
+
+    private async Task ExitCoreAsync()
+    {
+        _exitRequested = true;
+        try
+        {
+            await DisposeSharedServicesAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (Exception ex)
+        {
+            App.RecordStartupFailure(ex);
+            // Do not dispose resources underneath workers that failed to stop.
+            Environment.Exit(1);
+            return;
+        }
+        LocalizationService.Current.LanguageChanged -= OnLanguageChanged;
+        Activated -= OnWindowActivated;
         RemoveTrayIcon();
-        await DisposeSharedServicesAsync();
+        RestoreWindowProc();
+        _shutdownComplete = true;
         Close();
     }
 
     private static async Task DisposeSharedServicesAsync()
     {
         await MainPage.DisposeSharedViewModelAsync();
+        await App.StopInstanceAsync();
     }
 
     private nint WndProc(nint hWnd, uint msg, nint wParam, nint lParam)
     {
+        if (!_exitRequested && msg == WmSettingChange
+            && (lParam == 0 || string.Equals(Marshal.PtrToStringUni(lParam), "intl", StringComparison.OrdinalIgnoreCase)))
+        {
+            MainPage.RefreshRegionalFormats();
+        }
+
         if (msg == TrayCallbackMessage)
         {
             var mouseMessage = unchecked((uint)lParam.ToInt64());
@@ -255,7 +283,8 @@ public sealed partial class MainWindow : Window
         if (msg == WmPowerBroadcast)
         {
             var powerEvent = wParam.ToInt32();
-            if (powerEvent is PbtApmResumeAutomatic or PbtApmResumeSuspend)
+            if (powerEvent == PbtApmSuspend) _resumeGate.Suspend();
+            if (powerEvent is PbtApmResumeAutomatic or PbtApmResumeSuspend && _resumeGate.TryResume())
             {
                 _ = MainPage.NotifySystemResumeAsync();
                 return 1;

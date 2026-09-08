@@ -29,14 +29,16 @@ Only one application instance remains active. Starting the executable again rest
 
 ## Sidebar behavior
 
-The sidebar contains Dashboard, Bindings, Settings, and optionally Support me. The control at the bottom expands or collapses the pane:
+The sidebar contains Dashboard, Bindings, Diagnostics, Settings, and optionally Support me. The compact control at the bottom expands or collapses the pane:
 
 - the expanded pane shows the application name and navigation labels;
 - the collapsed pane keeps the logo and navigation icons visible;
 - tooltips and accessible names identify icon-only controls.
 
+The arrow points left to collapse the sidebar and right to expand it. It rotates when toggled, unless Windows animations are disabled. In the expanded sidebar, the button fills the available width with compact text and an icon; in the collapsed sidebar, it becomes a small square icon button.
+
 The Support me item can be removed through [Appearance settings](settings.md#appearance).
 
 ## Responsive pages
 
-The main content responds to window width. Dashboard groups and Binding columns move from side-by-side layouts to stacked layouts when needed. **Compact** and **Expanded** interface modes control the page width without changing the available functionality.
+The main content responds to window width. Dashboard cards are always stacked, and Binding columns stack when the window becomes narrow. **Compact** and **Expanded** interface modes control the page width without changing the available functionality.

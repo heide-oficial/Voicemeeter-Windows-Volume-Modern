@@ -1,32 +1,26 @@
-using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32;
+using System.Reflection.PortableExecutable;
 using VMWV.Core.Services;
 
 namespace VMWV.Infrastructure.Windows.Voicemeeter;
 
 public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
 {
-    private static readonly TimeSpan ProcessWaitTimeout = TimeSpan.FromSeconds(10);
-    private static readonly string[] VoicemeeterProcessNames =
-    [
-        "voicemeeter",
-        "voicemeeterpro",
-        "voicemeeter8"
-    ];
-
-    private readonly VoicemeeterRemoteLibrary _library;
+    private readonly IVoicemeeterRemoteLibrary _library;
     private readonly SemaphoreSlim _apiLock = new(1, 1);
     private VoicemeeterConnectionState _state = VoicemeeterConnectionState.Disconnected;
     private bool _isLoggedIn;
+    private bool _disposed;
 
     public VoicemeeterRemoteClient()
         : this(new VoicemeeterRemoteLibrary())
     {
     }
 
-    internal VoicemeeterRemoteClient(VoicemeeterRemoteLibrary library)
+    internal VoicemeeterRemoteClient(IVoicemeeterRemoteLibrary library)
     {
         _library = library;
     }
@@ -58,44 +52,24 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
         await _apiLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_isLoggedIn)
-            {
-                State = VoicemeeterConnectionState.Connected;
-                return;
-            }
-
-            State = VoicemeeterConnectionState.WaitingForProcess;
-            await WaitForVoicemeeterProcessAsync(cancellationToken).ConfigureAwait(false);
-
+            ObjectDisposedException.ThrowIf(_disposed, this);
             State = VoicemeeterConnectionState.Connecting;
             _library.Load();
-
-            var loginResult = _library.Login();
-            if (loginResult < 0)
+            if (!_isLoggedIn)
             {
-                State = VoicemeeterConnectionState.Error;
-                throw new InvalidOperationException($"Voicemeeter login failed with code {loginResult}.");
+                var loginResult = _library.Login();
+                if (loginResult < 0)
+                    throw new InvalidOperationException($"Voicemeeter login failed with code {loginResult}.");
+                _isLoggedIn = true;
             }
-
-            _isLoggedIn = true;
+            await WaitForParametersReadyAsync(cancellationToken).ConfigureAwait(false);
             Edition = await ResolveEditionAsync(cancellationToken).ConfigureAwait(false);
             State = VoicemeeterConnectionState.Connected;
         }
         catch
         {
             State = VoicemeeterConnectionState.Error;
-            if (_isLoggedIn)
-            {
-                try
-                {
-                    _library.Logout();
-                }
-                catch
-                {
-                }
-            }
-
-            _isLoggedIn = false;
+            Edition = "Unknown";
             throw;
         }
         finally
@@ -109,18 +83,28 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
         await _apiLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_isLoggedIn)
-            {
-                _library.Logout();
-                _isLoggedIn = false;
-            }
-
             State = VoicemeeterConnectionState.Disconnected;
+            Edition = "Unknown";
         }
         finally
         {
             _apiLock.Release();
         }
+    }
+
+    public async Task RefreshAsync(CancellationToken cancellationToken)
+    {
+        await _apiLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            EnsureConnected();
+            await WaitForParametersReadyAsync(cancellationToken).ConfigureAwait(false);
+            var edition = GetEditionName(_library.GetVoicemeeterType());
+            if (edition == "Unknown" || edition != Edition)
+                throw new InvalidOperationException("Voicemeeter availability or edition changed.");
+        }
+        catch { MarkConnectionLost(); throw; }
+        finally { _apiLock.Release(); }
     }
 
     public async Task<IReadOnlyList<VoicemeeterBindingTarget>> GetBindingTargetsAsync(CancellationToken cancellationToken)
@@ -170,6 +154,8 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
 
     public async Task SetGainAsync(IReadOnlyList<VoicemeeterBindingTarget> targets, double gain, CancellationToken cancellationToken)
     {
+        if (!double.IsFinite(gain) || gain < -60 || gain > 12)
+            throw new ArgumentOutOfRangeException(nameof(gain));
         if (targets.Count == 0)
         {
             return;
@@ -181,7 +167,7 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
             EnsureConnected();
             cancellationToken.ThrowIfCancellationRequested();
 
-            var gainText = gain.ToString("0.0", CultureInfo.InvariantCulture);
+            var gainText = gain.ToString("R", CultureInfo.InvariantCulture);
             var script = new StringBuilder(targets.Count * 24);
             foreach (var target in targets)
             {
@@ -253,68 +239,16 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
 
     public async ValueTask DisposeAsync()
     {
-        await DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
-        _library.Dispose();
-    }
-
-    private static async Task WaitForVoicemeeterProcessAsync(CancellationToken cancellationToken)
-    {
-        var start = Stopwatch.GetTimestamp();
-        while (!IsVoicemeeterProcessRunning())
+        await _apiLock.WaitAsync().ConfigureAwait(false);
+        try
         {
-            if (Stopwatch.GetElapsedTime(start) >= ProcessWaitTimeout)
-            {
-                throw new TimeoutException("Voicemeeter process was not found. Start Voicemeeter and try again.");
-            }
-
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+            if (_disposed) return;
+            _disposed = true;
+            if (_isLoggedIn) { _library.Logout(); _isLoggedIn = false; }
+            State = VoicemeeterConnectionState.Disconnected;
+            _library.Dispose();
         }
-    }
-
-    private static bool IsVoicemeeterProcessRunning()
-    {
-        foreach (var processName in VoicemeeterProcessNames)
-        {
-            var processes = Process.GetProcessesByName(processName);
-            try
-            {
-                if (processes.Length > 0)
-                {
-                    return true;
-                }
-            }
-            finally
-            {
-                foreach (var process in processes)
-                {
-                    process.Dispose();
-                }
-            }
-        }
-
-        return IsVoicemeeterProcessRunningByPrefix();
-    }
-
-    private static bool IsVoicemeeterProcessRunningByPrefix()
-    {
-        foreach (var process in Process.GetProcesses())
-        {
-            using (process)
-            {
-                try
-                {
-                    if (process.ProcessName.StartsWith("voicemeeter", StringComparison.OrdinalIgnoreCase))
-                    {
-                        return true;
-                    }
-                }
-                catch (InvalidOperationException)
-                {
-                }
-            }
-        }
-
-        return false;
+        finally { _apiLock.Release(); }
     }
 
     private VoicemeeterBindingTarget CreateTarget(string kind, int index)
@@ -333,29 +267,19 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
             true);
     }
 
-    private async Task WaitForParametersReadyAsync(CancellationToken cancellationToken)
+    private Task WaitForParametersReadyAsync(CancellationToken cancellationToken)
     {
-        for (var attempt = 0; attempt < 20; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var result = _library.IsParametersDirty();
-            if (result == 0)
-            {
-                return;
-            }
-
-            if (result < 0)
-            {
-                throw new InvalidOperationException($"Unable to read Voicemeeter parameters. Code: {result}.");
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken).ConfigureAwait(false);
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = _library.IsParametersDirty();
+        if (result < 0)
+            throw new InvalidOperationException($"Unable to read Voicemeeter parameters. Code: {result}.");
+        return Task.CompletedTask;
     }
 
     private void EnsureConnected()
     {
-        if (!_isLoggedIn)
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_isLoggedIn || State != VoicemeeterConnectionState.Connected)
         {
             throw new InvalidOperationException("Voicemeeter is not connected.");
         }
@@ -389,7 +313,7 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
             return;
         }
 
-        _isLoggedIn = false;
+        Edition = "Unknown";
         State = VoicemeeterConnectionState.Error;
     }
 
@@ -420,7 +344,19 @@ public sealed class VoicemeeterRemoteClient : IVoicemeeterClient
     }
 }
 
-internal sealed class VoicemeeterRemoteLibrary : IDisposable
+internal interface IVoicemeeterRemoteLibrary : IDisposable
+{
+    void Load();
+    int Login();
+    int Logout();
+    int IsParametersDirty();
+    int GetVoicemeeterType();
+    void SetParameterFloat(string parameterName, float value);
+    string GetParameterString(string parameterName);
+    void SetParameters(string script);
+}
+
+internal sealed class VoicemeeterRemoteLibrary : IVoicemeeterRemoteLibrary
 {
     private nint _handle;
     private LoginDelegate? _login;
@@ -463,13 +399,21 @@ internal sealed class VoicemeeterRemoteLibrary : IDisposable
 
         var libraryPath = ResolveLibraryPath();
         _handle = NativeLibrary.Load(libraryPath);
-        _login = LoadFunction<LoginDelegate>("VBVMR_Login");
-        _logout = LoadFunction<LogoutDelegate>("VBVMR_Logout");
-        _getVoicemeeterType = LoadFunction<GetVoicemeeterTypeDelegate>("VBVMR_GetVoicemeeterType");
-        _isParametersDirty = LoadFunction<IsParametersDirtyDelegate>("VBVMR_IsParametersDirty");
-        _setParameterFloat = LoadFunction<SetParameterFloatDelegate>("VBVMR_SetParameterFloat");
-        _getParameterStringW = LoadFunction<GetParameterStringWDelegate>("VBVMR_GetParameterStringW");
-        _setParameters = LoadFunction<SetParametersDelegate>("VBVMR_SetParameters");
+        try
+        {
+            _login = LoadFunction<LoginDelegate>("VBVMR_Login");
+            _logout = LoadFunction<LogoutDelegate>("VBVMR_Logout");
+            _getVoicemeeterType = LoadFunction<GetVoicemeeterTypeDelegate>("VBVMR_GetVoicemeeterType");
+            _isParametersDirty = LoadFunction<IsParametersDirtyDelegate>("VBVMR_IsParametersDirty");
+            _setParameterFloat = LoadFunction<SetParameterFloatDelegate>("VBVMR_SetParameterFloat");
+            _getParameterStringW = LoadFunction<GetParameterStringWDelegate>("VBVMR_GetParameterStringW");
+            _setParameters = LoadFunction<SetParametersDelegate>("VBVMR_SetParameters");
+        }
+        catch
+        {
+            Dispose();
+            throw;
+        }
     }
 
     public int Login() => (_login ?? throw NotLoaded())();
@@ -528,17 +472,59 @@ internal sealed class VoicemeeterRemoteLibrary : IDisposable
 
     private static string ResolveLibraryPath()
     {
+        if (RuntimeInformation.ProcessArchitecture != Architecture.X64)
+            throw new PlatformNotSupportedException("The Voicemeeter integration currently requires the x64 application.");
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-        var candidates = new[]
+        var candidates = RegisteredInstallDirectories().Select(directory => Path.Combine(directory, "VoicemeeterRemote64.dll")).Concat(new[]
         {
             Path.Combine(programFiles, "VB", "Voicemeeter", "VoicemeeterRemote64.dll"),
             Path.Combine(programFilesX86, "VB", "Voicemeeter", "VoicemeeterRemote64.dll"),
             Path.Combine(AppContext.BaseDirectory, "VoicemeeterRemote64.dll")
-        };
+        });
 
-        return candidates.FirstOrDefault(File.Exists)
+        return candidates.FirstOrDefault(path => File.Exists(path) && IsX64Library(path))
             ?? throw new FileNotFoundException("VoicemeeterRemote64.dll was not found. Install Voicemeeter or place the DLL next to the app.");
+    }
+
+    internal static bool IsX64Library(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            using var reader = new PEReader(stream);
+            return reader.PEHeaders.CoffHeader.Machine == Machine.Amd64;
+        }
+        catch (Exception ex) when (ex is IOException or BadImageFormatException or UnauthorizedAccessException) { return false; }
+    }
+
+    private static IEnumerable<string> RegisteredInstallDirectories()
+    {
+        if (!OperatingSystem.IsWindows()) yield break;
+        foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+        {
+            using var root = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+            using var uninstall = root.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+            if (uninstall is null) continue;
+            foreach (var name in uninstall.GetSubKeyNames().Where(name => name.StartsWith("VB:Voicemeeter", StringComparison.OrdinalIgnoreCase)))
+            {
+                using var product = uninstall.OpenSubKey(name);
+                if (product?.GetValue("InstallLocation") is string directory && Directory.Exists(directory))
+                    yield return directory;
+                if (product?.GetValue("UninstallString") is string command)
+                {
+                    var executable = command.Trim();
+                    if (executable.StartsWith('"'))
+                    {
+                        var end = executable.IndexOf('"', 1);
+                        if (end > 1) executable = executable[1..end];
+                    }
+                    if (Path.IsPathFullyQualified(executable) && File.Exists(executable)
+                        && Path.GetDirectoryName(executable) is { } path)
+                        yield return path;
+                }
+            }
+        }
     }
 
     private static InvalidOperationException NotLoaded() =>

@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
-using Microsoft.Windows.AppLifecycle;
+using VMWV.Infrastructure.Windows.Startup;
 using VMWV.Core.Settings;
 using VMWV_App.Localization;
 
@@ -18,7 +18,8 @@ namespace VMWV_App;
 /// </summary>
 public partial class App : Application
 {
-    private const string MainInstanceKey = "VMWV_App_MainInstance";
+    private static InstanceActivationService? _instance;
+    private static readonly TaskCompletionSource<MainWindow> WindowReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>
     /// The main application window. Use <c>App.Window</c> from any class that needs
@@ -46,8 +47,7 @@ public partial class App : Application
     /// </summary>
     public App()
     {
-        var settingsStore = new JsonSettingsStore(AppSettingsPaths.DefaultSettingsPath);
-        LocalizationService.Current.Initialize(settingsStore.LoadOrCreate().Language);
+        LocalizationService.Current.Initialize("en-us");
         InitializeComponent();
     }
 
@@ -55,55 +55,72 @@ public partial class App : Application
     /// Invoked when the application is launched.
     /// </summary>
     /// <param name="args">Details about the launch request and process.</param>
-    protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+    protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
-        var isBackgroundLaunch = IsBackgroundLaunch(args.Arguments) || IsBackgroundCommandLine();
-        var mainInstance = AppInstance.FindOrRegisterForKey(MainInstanceKey);
-        if (!mainInstance.IsCurrent)
+        try
         {
-            if (!isBackgroundLaunch)
+            DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+            var isBackgroundLaunch = IsBackgroundLaunch(args.Arguments) || IsBackgroundCommandLine();
+            _instance = new InstanceActivationService();
+            if (!_instance.IsPrimary)
             {
-                mainInstance.RedirectActivationToAsync(AppInstance.GetCurrent().GetActivatedEventArgs())
-                    .AsTask()
-                    .GetAwaiter()
-                    .GetResult();
-            }
-
-            Environment.Exit(0);
-            return;
-        }
-
-        mainInstance.Activated += OnAppInstanceActivated;
-        Window = new MainWindow();
-        DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        if (isBackgroundLaunch && Window is MainWindow mainWindow)
-        {
-            _ = mainWindow.StartInTrayAsync();
-            return;
-        }
-
-        Window.Activate();
-    }
-
-    private static void OnAppInstanceActivated(object? sender, AppActivationArguments args)
-    {
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            if (Window is MainWindow mainWindow)
-            {
-                if (IsBackgroundActivation(args))
+                if (!isBackgroundLaunch)
                 {
-                    _ = mainWindow.StartInTrayAsync();
-                    return;
+                    await _instance.RedirectAsync(CancellationToken.None);
                 }
 
-                mainWindow.RestoreAndActivate();
+                await _instance.DisposeAsync();
+                Environment.Exit(0);
+                return;
             }
-            else
+
+            _instance.Failed += (_, error) => RecordStartupFailure(error);
+            _instance.Start(ActivateExistingWindowAsync);
+            var settingsStore = new JsonSettingsStore(AppSettingsPaths.DefaultSettingsPath);
+            LocalizationService.Current.SetLanguage(settingsStore.LoadOrCreate().Language);
+            var createdWindow = new MainWindow(isBackgroundLaunch);
+            Window = createdWindow;
+            WindowReady.TrySetResult(createdWindow);
+            DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+            if (isBackgroundLaunch && Window is MainWindow mainWindow)
             {
-                Window.Activate();
+                await mainWindow.StartInTrayAsync();
+                return;
             }
-        });
+
+            Window.Activate();
+        }
+        catch (Exception ex)
+        {
+            RecordStartupFailure(ex);
+            Environment.Exit(1);
+        }
+    }
+
+    private static async Task ActivateExistingWindowAsync()
+    {
+        var window = await WindowReady.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var activated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            try { window.RestoreAndActivate(); activated.TrySetResult(); }
+            catch (Exception ex) { activated.TrySetException(ex); }
+        })) throw new InvalidOperationException("The application is shutting down.");
+        await activated.Task;
+    }
+
+    internal static ValueTask StopInstanceAsync() => _instance?.DisposeAsync() ?? ValueTask.CompletedTask;
+
+    internal static void RecordStartupFailure(Exception error)
+    {
+        try
+        {
+            Directory.CreateDirectory(AppSettingsPaths.DefaultLogsFolder);
+            File.AppendAllText(Path.Combine(AppSettingsPaths.DefaultLogsFolder, "lifecycle.log"),
+                $"{DateTimeOffset.Now:O} {error}{Environment.NewLine}");
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     private static bool IsBackgroundLaunch(string? arguments) =>
@@ -117,9 +134,4 @@ public partial class App : Application
     private static bool IsBackgroundArgument(string argument) =>
         argument.Equals("--background", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsBackgroundActivation(AppActivationArguments args)
-    {
-        var argumentsProperty = args.Data?.GetType().GetProperty("Arguments");
-        return IsBackgroundLaunch(argumentsProperty?.GetValue(args.Data) as string);
-    }
 }

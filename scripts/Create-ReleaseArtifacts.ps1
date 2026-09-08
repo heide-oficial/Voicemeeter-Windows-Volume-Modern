@@ -1,8 +1,10 @@
 param(
-    [ValidateSet("x64", "ARM64")]
+    [ValidateSet("x64")]
     [string]$Platform = "x64",
 
-    [switch]$SkipSetup
+    [switch]$SkipSetup,
+
+    [string]$OutputDirectory = "artifacts/release"
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,7 +15,8 @@ $appProject = Join-Path $repoRoot "native\VMWV.App\VMWV.App.csproj"
 $portableProject = Join-Path $repoRoot "native\VMWV.Portable\VMWV.Portable.csproj"
 $installerProject = Join-Path $repoRoot "native\VMWV.Installer\VMWV.Installer.wixproj"
 $installerGeneratedFiles = Join-Path $repoRoot "native\VMWV.Installer\GeneratedFiles.wxs"
-$artifactRoot = Join-Path $repoRoot "artifacts\release"
+$destinationRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputDirectory))
+$artifactRoot = Join-Path $destinationRoot (".staging-" + [Guid]::NewGuid().ToString("N"))
 $publishRoot = Join-Path $artifactRoot "publish-$rid"
 $portablePublishRoot = Join-Path $artifactRoot "portable-publish-$rid"
 $installerBuildRoot = Join-Path $artifactRoot "installer-build-$rid"
@@ -26,12 +29,13 @@ function Assert-InRepo {
     param([Parameter(Mandatory)][string]$Path)
 
     $full = [System.IO.Path]::GetFullPath($Path)
-    $root = [System.IO.Path]::GetFullPath($repoRoot)
+    $root = [System.IO.Path]::GetFullPath($repoRoot).TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
     if (-not $full.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing to modify a path outside the repository: $full"
     }
 }
 
+Assert-InRepo $destinationRoot
 Assert-InRepo $artifactRoot
 Assert-InRepo $publishRoot
 Assert-InRepo $portablePublishRoot
@@ -60,7 +64,7 @@ function ConvertTo-WixId {
         $id = "Id_$id"
     }
 
-    if ($id.Length -gt 68) {
+    if ($id.Length -gt 0) {
         $sha256 = [System.Security.Cryptography.SHA256]::Create()
         try {
             $hashBytes = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Value))
@@ -69,7 +73,7 @@ function ConvertTo-WixId {
             $sha256.Dispose()
         }
         $hash = [System.BitConverter]::ToString($hashBytes, 0, 4).Replace("-", "")
-        $id = $id.Substring(0, 59) + "_" + $hash
+        $id = $id.Substring(0, [Math]::Min(59, $id.Length)) + "_" + $hash
     }
 
     return $id
@@ -87,52 +91,60 @@ function Get-RelativePath {
 }
 
 function Write-WixDirectory {
-    param(
-        [Parameter(Mandatory)][System.IO.DirectoryInfo]$Directory,
-        [Parameter(Mandatory)][System.Text.StringBuilder]$Xml,
-        [System.Collections.Generic.List[string]]$ComponentIds
-    )
+    param([System.IO.DirectoryInfo]$Directory, [System.Xml.XmlWriter]$Xml,
+        [System.Collections.Generic.List[string]]$ComponentIds)
 
     foreach ($file in $Directory.GetFiles() | Sort-Object FullName) {
         $relative = Get-RelativePath -BasePath $publishRoot -Path $file.FullName
-        $fileId = ConvertTo-WixId "fil_$relative"
         $componentId = ConvertTo-WixId "cmp_$relative"
-        [void]$ComponentIds.Add($componentId)
-        [void]$Xml.AppendLine("      <Component Id=`"$componentId`" Guid=`"*`">")
-        [void]$Xml.AppendLine("        <File Id=`"$fileId`" Source=`"$($file.FullName)`" KeyPath=`"yes`" />")
-        [void]$Xml.AppendLine("      </Component>")
+        $ComponentIds.Add($componentId)
+        $Xml.WriteStartElement("Component")
+        $Xml.WriteAttributeString("Id", $componentId)
+        $Xml.WriteAttributeString("Guid", "*")
+        $Xml.WriteStartElement("File")
+        $Xml.WriteAttributeString("Id", (ConvertTo-WixId "fil_$relative"))
+        $Xml.WriteAttributeString("Source", $file.FullName)
+        $Xml.WriteAttributeString("KeyPath", "yes")
+        $Xml.WriteEndElement()
+        $Xml.WriteEndElement()
     }
-
     foreach ($child in $Directory.GetDirectories() | Sort-Object FullName) {
-        $relative = Get-RelativePath -BasePath $publishRoot -Path $child.FullName
-        $directoryId = ConvertTo-WixId "dir_$relative"
-        [void]$Xml.AppendLine("      <Directory Id=`"$directoryId`" Name=`"$($child.Name)`">")
+        $Xml.WriteStartElement("Directory")
+        $Xml.WriteAttributeString("Id", (ConvertTo-WixId ("dir_" + (Get-RelativePath $publishRoot $child.FullName))))
+        $Xml.WriteAttributeString("Name", $child.Name)
         Write-WixDirectory -Directory $child -Xml $Xml -ComponentIds $ComponentIds
-        [void]$Xml.AppendLine("      </Directory>")
+        $Xml.WriteEndElement()
     }
 }
 
 function Write-WixGeneratedFiles {
     $components = [System.Collections.Generic.List[string]]::new()
-    $xml = [System.Text.StringBuilder]::new()
-
-    [void]$xml.AppendLine("<?xml version=`"1.0`" encoding=`"utf-8`"?>")
-    [void]$xml.AppendLine("<Wix xmlns=`"http://wixtoolset.org/schemas/v4/wxs`">")
-    [void]$xml.AppendLine("  <Fragment>")
-    [void]$xml.AppendLine("    <DirectoryRef Id=`"APPLICATIONFOLDER`">")
-    Write-WixDirectory -Directory (Get-Item -LiteralPath $publishRoot) -Xml $xml -ComponentIds $components
-    [void]$xml.AppendLine("    </DirectoryRef>")
-    [void]$xml.AppendLine("  </Fragment>")
-    [void]$xml.AppendLine("  <Fragment>")
-    [void]$xml.AppendLine("    <ComponentGroup Id=`"AppFiles`">")
-    foreach ($componentId in $components) {
-        [void]$xml.AppendLine("      <ComponentRef Id=`"$componentId`" />")
+    $options = [System.Xml.XmlWriterSettings]::new()
+    $options.Indent = $true
+    $xml = [System.Xml.XmlWriter]::Create($installerGeneratedFiles, $options)
+    try {
+        $xml.WriteStartDocument()
+        $xml.WriteStartElement("Wix", "http://wixtoolset.org/schemas/v4/wxs")
+        $xml.WriteStartElement("Fragment")
+        $xml.WriteStartElement("DirectoryRef")
+        $xml.WriteAttributeString("Id", "APPLICATIONFOLDER")
+        Write-WixDirectory -Directory (Get-Item -LiteralPath $publishRoot) -Xml $xml -ComponentIds $components
+        $xml.WriteEndElement()
+        $xml.WriteEndElement()
+        $xml.WriteStartElement("Fragment")
+        $xml.WriteStartElement("ComponentGroup")
+        $xml.WriteAttributeString("Id", "AppFiles")
+        foreach ($componentId in $components) {
+            $xml.WriteStartElement("ComponentRef")
+            $xml.WriteAttributeString("Id", $componentId)
+            $xml.WriteEndElement()
+        }
+        $xml.WriteEndElement()
+        $xml.WriteEndElement()
+        $xml.WriteEndElement()
+        $xml.WriteEndDocument()
     }
-    [void]$xml.AppendLine("    </ComponentGroup>")
-    [void]$xml.AppendLine("  </Fragment>")
-    [void]$xml.AppendLine("</Wix>")
-
-    Set-Content -LiteralPath $installerGeneratedFiles -Value $xml.ToString() -Encoding UTF8
+    finally { $xml.Dispose() }
 }
 
 dotnet publish $appProject `
@@ -145,6 +157,7 @@ dotnet publish $appProject `
     -p:PublishSingleFile=false `
     -p:PublishTrimmed=false `
     -o $publishRoot
+if ($LASTEXITCODE -ne 0) { throw "Application publish failed with exit code $LASTEXITCODE" }
 
 $publishedApp = Join-Path $publishRoot "VMWV.App.exe"
 if (-not (Test-Path $publishedApp)) {
@@ -162,6 +175,7 @@ dotnet publish $portableProject `
     -p:PublishTrimmed=false `
     -p:PayloadZipPath=$payloadZip `
     -o $portablePublishRoot
+if ($LASTEXITCODE -ne 0) { throw "Portable publish failed with exit code $LASTEXITCODE" }
 
 $publishedPortable = Join-Path $portablePublishRoot "VMWV.Portable.exe"
 if (-not (Test-Path $publishedPortable)) {
@@ -181,15 +195,35 @@ if (-not $SkipSetup) {
         -c Release `
         -p:Platform=$Platform `
         -p:PublishRoot=$publishRoot `
+        -p:SuppressValidation=true `
         -o $installerBuildRoot
+    if ($LASTEXITCODE -ne 0) { throw "MSI build failed with exit code $LASTEXITCODE" }
 
     $publishedSetup = Join-Path $installerBuildRoot "VoicemeeterWindowsVolumeModern-Setup.msi"
     if (-not (Test-Path $publishedSetup)) {
         throw "Installer build did not create $publishedSetup"
     }
 
+    $wixVersion = ([xml](Get-Content -LiteralPath $installerProject -Raw)).Project.Sdk.Split('/')[1]
+    $nugetRoot = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:USERPROFILE ".nuget/packages" }
+    $wixExecutable = Join-Path $nugetRoot "wixtoolset.sdk/$wixVersion/tools/net472/x64/wix.exe"
+    & (Join-Path $PSScriptRoot "Validate-Installer.ps1") -MsiPath $publishedSetup -PublishRoot $publishRoot `
+        -GeneratedFiles $installerGeneratedFiles -WixExecutable $wixExecutable
+
     Copy-Item -LiteralPath $publishedSetup -Destination $setupMsi -Force
     $result.Setup = $setupMsi
 }
 
+foreach ($key in @($result.Keys)) {
+    $source = $result[$key]
+    $destination = Join-Path $destinationRoot ([System.IO.Path]::GetFileName($source))
+    Copy-Item -LiteralPath $source -Destination $destination -Force
+    $result[$key] = $destination
+}
+$metadata = [ordered]@{
+    BuiltAtUtc = [DateTimeOffset]::UtcNow.ToString("O")
+    Version = (Get-Item -LiteralPath $publishedApp).VersionInfo.FileVersion
+    Files = @($result.Values | ForEach-Object { Get-FileHash -LiteralPath $_ -Algorithm SHA256 | Select-Object Hash,Path })
+}
+$metadata | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $destinationRoot "build-manifest.json") -Encoding UTF8
 [pscustomobject]$result | ConvertTo-Json

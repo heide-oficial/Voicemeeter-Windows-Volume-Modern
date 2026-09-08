@@ -21,27 +21,23 @@ The **Windows audio** card shows:
 
 - the current volume percentage of the default Windows output endpoint;
 - the endpoint display name;
-- whether the endpoint is muted or unmuted.
+- **Muted** when the endpoint is muted or its volume is zero. An unmuted endpoint does not add a status label to the card.
 
 The card follows default-output changes while the application is running. If Windows has no usable default output endpoint, the card reports that the endpoint is unavailable and synchronization cannot proceed until one becomes available.
 
 ## Active Strip and Bus cards
 
-The **Strip** and **Bus** cards list only enabled bindings. Each active target is displayed as a compact item using its current Voicemeeter name.
+The **Strip** and **Bus** cards list only enabled bindings. Each compact item shows the current Voicemeeter name, its channel index (such as **Strip 3** or **Bus 0**), and the assigned device. A custom name replaces the default name when one is set.
+
+If Voicemeeter does not report a device for the channel, the item shows **No device selected**. Long names are shortened to fit; hover over them to read the full text.
 
 - If no strip is enabled, the Strip card shows **No active strip bindings**.
 - If no bus is enabled, the Bus card shows **No active bus bindings**.
 
 Bindings are managed on the [Bindings page](bindings.md). Enabling or disabling a target updates these cards immediately.
 
-## Diagnostics
-
-The **Diagnostics** card presents recent operational events with a timestamp, category, and message. Events include connection attempts, audio changes, settings updates, recovery actions, and failures.
-
-The newest event appears first. Consecutive volume-change events replace the previous volume-change line instead of filling the list with repeated entries. The on-screen list is bounded, so older entries are removed as new events arrive.
-
-Diagnostics is intended to explain the current application state. It does not provide controls; the relevant actions remain in [Settings](settings.md).
+Operational events, including mute and unmute changes, appear on the separate [Diagnostics page](diagnostics.md).
 
 ## Layout behavior
 
-At wider window sizes, Windows and Voicemeeter status cards are arranged beside the Strip and Bus cards. At narrower sizes, the groups stack vertically. The **Compact** and **Expanded** interface modes in Settings determine the maximum page width; see [Appearance](settings.md#appearance).
+The Voicemeeter, Windows audio, Strip, and Bus cards are stacked vertically at every window width. The **Compact** and **Expanded** interface modes in Settings determine the maximum page width; see [Appearance](settings.md#appearance).

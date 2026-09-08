@@ -10,6 +10,7 @@ public interface IVoicemeeterClient : IAsyncDisposable
 
     Task ConnectAsync(CancellationToken cancellationToken);
     Task DisconnectAsync(CancellationToken cancellationToken);
+    Task RefreshAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<VoicemeeterBindingTarget>> GetBindingTargetsAsync(CancellationToken cancellationToken);
     Task SetGainAsync(VoicemeeterBindingTarget target, double gain, CancellationToken cancellationToken);
     Task SetGainAsync(IReadOnlyList<VoicemeeterBindingTarget> targets, double gain, CancellationToken cancellationToken);

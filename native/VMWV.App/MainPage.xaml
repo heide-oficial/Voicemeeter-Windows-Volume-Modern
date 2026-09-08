@@ -19,13 +19,39 @@
             <Setter Property="MinHeight" Value="0" />
         </Style>
         <Style x:Key="CompactGridViewItemStyle" TargetType="GridViewItem">
-            <Setter Property="HorizontalAlignment" Value="Left" />
-            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Margin" Value="0" />
             <Setter Property="MinHeight" Value="0" />
             <Setter Property="MinWidth" Value="0" />
         </Style>
+        <DataTemplate x:Key="DashboardBindingTemplate" x:DataType="models:BindingTargetItem">
+            <Border
+                Margin="0,0,8,8"
+                Padding="12,8"
+                Background="{ThemeResource ControlFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource ControlCornerRadius}">
+                <StackPanel VerticalAlignment="Center" Spacing="2">
+                    <TextBlock
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="{x:Bind Name, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis"
+                        ToolTipService.ToolTip="{x:Bind Name, Mode=OneWay}" />
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind Detail, Mode=OneWay}" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        MaxLines="2"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind DeviceName, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="Wrap"
+                        ToolTipService.ToolTip="{x:Bind DeviceName, Mode=OneWay}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
         <Style TargetType="ToggleSwitch">
             <Setter Property="Width" Value="52" />
             <Setter Property="HorizontalAlignment" Value="Right" />
@@ -89,6 +115,7 @@
                         <TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(IsEnabled), Mode=OneWay}" />
                         <ToggleSwitch
                             AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                            AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
                             IsEnabled="{x:Bind IsAvailable, Mode=OneWay}"
                             IsOn="{x:Bind IsEnabled, Mode=TwoWay}" />
                     </StackPanel>
@@ -109,6 +136,7 @@
         PaneClosed="OnNavigationPaneChanged"
         PaneDisplayMode="Left"
         PaneOpened="OnNavigationPaneChanged"
+        SizeChanged="OnNavigationSizeChanged"
         SelectionChanged="OnNavigationSelectionChanged">
         <NavigationView.PaneHeader>
             <Grid
@@ -160,6 +188,14 @@
                 Icon="Audio"
                 Tag="Bindings" />
             <NavigationViewItem
+                AutomationProperties.AutomationId="NavDiagnostics"
+                Content="{Binding [Navigation.Diagnostics], Source={StaticResource Strings}}"
+                Tag="Diagnostics">
+                <NavigationViewItem.Icon>
+                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE9D9;" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem
                 x:Name="NavSettings"
                 AutomationProperties.AutomationId="NavSettings"
                 Content="{Binding [Navigation.Settings], Source={StaticResource Strings}}"
@@ -183,27 +219,35 @@
                     x:Name="PaneToggleButton"
                     AutomationProperties.AutomationId="BtnPaneToggle"
                     AutomationProperties.Name="{Binding [Navigation.Expand], Source={StaticResource Strings}}"
-                    MinWidth="40"
-                    Height="40"
+                    MinWidth="32"
+                    Height="32"
                     HorizontalAlignment="Stretch"
-                    Padding="0"
+                    Padding="8,0"
                     Click="OnPaneToggleClicked"
                     ToolTipService.ToolTip="{Binding [Navigation.Expand], Source={StaticResource Strings}}">
-                    <Grid ColumnSpacing="12">
+                    <Grid HorizontalAlignment="Center" ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="40" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <FontIcon
                             x:Name="PaneToggleIcon"
-                            HorizontalAlignment="Center"
+                            Width="14" Height="14"
                             VerticalAlignment="Center"
-                            FontFamily="Segoe Fluent Icons"
-                            Glyph="&#xE72A;" />
+                            FontSize="14"
+                            FontFamily="{StaticResource SymbolThemeFontFamily}"
+                            Glyph="&#xE72A;"
+                            RenderTransformOrigin="0.5,0.5">
+                            <FontIcon.RenderTransform>
+                                <RotateTransform x:Name="PaneToggleRotation" />
+                            </FontIcon.RenderTransform>
+                        </FontIcon>
                         <TextBlock
                             x:Name="PaneToggleText"
                             Grid.Column="1"
                             VerticalAlignment="Center"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            TextTrimming="CharacterEllipsis"
                             Text="{Binding [Navigation.Collapse], Source={StaticResource Strings}}" />
                     </Grid>
                 </Button>
@@ -214,202 +258,208 @@
             x:Name="ContentRoot"
             Padding="24,48,24,24"
             SizeChanged="OnContentRootSizeChanged">
-            <Grid
-                x:Name="DashboardSection"
-                Visibility="Visible">
-                <Grid
-                    x:Name="DashboardContent"
-                    RowSpacing="16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <InfoBar AutomationProperties.AutomationId="SettingsReadError" IsOpen="{x:Bind ViewModel.HasSettingsReadError, Mode=OneWay}" IsClosable="False" Severity="Error" Title="{Binding [Settings.Validation.ReadFailed], Source={StaticResource Strings}}" Message="{x:Bind ViewModel.SettingsReadError, Mode=OneWay}" />
+            <ScrollViewer
+                x:Name="DashboardSection" Grid.Row="1"
+                HorizontalScrollMode="Disabled"
+                HorizontalScrollBarVisibility="Disabled"
+                VerticalScrollBarVisibility="Auto">
+                <Grid x:Name="DashboardContent" RowSpacing="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="{Binding [Navigation.Dashboard], Source={StaticResource Strings}}" />
+                    <Grid Grid.Row="1" RowSpacing="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Border
+                            AutomationProperties.AutomationId="DashboardVoicemeeterCard"
+                            MinHeight="96"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Dashboard.Voicemeeter], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE8D4;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [Dashboard.Voicemeeter], Source={StaticResource Strings}}" />
+                                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind ViewModel.VoicemeeterStatus, Mode=OneWay}" />
+                                    <TextBlock Text="{x:Bind ViewModel.VoicemeeterDetail, Mode=OneWay}" TextWrapping="WrapWholeWords" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Border
+                            AutomationProperties.AutomationId="DashboardAudioCard"
+                            Grid.Row="1"
+                            MinHeight="96"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Dashboard.WindowsAudio], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE995;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [Dashboard.WindowsAudio], Source={StaticResource Strings}}" />
+                                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind ViewModel.WindowsAudioStatus, Mode=OneWay}" />
+                                    <TextBlock Text="{x:Bind ViewModel.WindowsAudioDetail, Mode=OneWay}" TextWrapping="WrapWholeWords" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Border
+                            x:Name="DashboardStripBindingsCard"
+                            Grid.Row="2"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid RowSpacing="12">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Dashboard.Strip], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE8D6;" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Dashboard.Strip], Source={StaticResource Strings}}" />
+                                </Grid>
+                                <StackPanel Grid.Row="1" Spacing="8">
+                                    <TextBlock
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{Binding [Dashboard.NoStripBindings], Source={StaticResource Strings}}"
+                                        Visibility="{x:Bind local:MainPage.InverseBoolToVisibility(ViewModel.HasDefinedStripBindings), Mode=OneWay}" />
+                                    <GridView
+                                        AutomationProperties.AutomationId="DashboardStripBindingsList"
+                                        ItemContainerStyle="{StaticResource CompactGridViewItemStyle}"
+                                        ItemTemplate="{StaticResource DashboardBindingTemplate}"
+                                        ItemsSource="{x:Bind ViewModel.DefinedStripBindings, Mode=OneWay}"
+                                        Loaded="OnDashboardBindingsLoaded"
+                                        SelectionMode="None"
+                                        SizeChanged="OnDashboardBindingsSizeChanged"
+                                        Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.HasDefinedStripBindings), Mode=OneWay}">
+                                        <GridView.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <ItemsWrapGrid ItemWidth="280" ItemHeight="112" Orientation="Horizontal" />
+                                            </ItemsPanelTemplate>
+                                        </GridView.ItemsPanel>
+                                    </GridView>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Border
+                            x:Name="DashboardBusBindingsCard"
+                            Grid.Row="3"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid RowSpacing="12">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Dashboard.Bus], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE9D9;" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Dashboard.Bus], Source={StaticResource Strings}}" />
+                                </Grid>
+                                <StackPanel Grid.Row="1" Spacing="8">
+                                    <TextBlock
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{Binding [Dashboard.NoBusBindings], Source={StaticResource Strings}}"
+                                        Visibility="{x:Bind local:MainPage.InverseBoolToVisibility(ViewModel.HasDefinedBusBindings), Mode=OneWay}" />
+                                    <GridView
+                                        AutomationProperties.AutomationId="DashboardBusBindingsList"
+                                        ItemContainerStyle="{StaticResource CompactGridViewItemStyle}"
+                                        ItemTemplate="{StaticResource DashboardBindingTemplate}"
+                                        ItemsSource="{x:Bind ViewModel.DefinedBusBindings, Mode=OneWay}"
+                                        Loaded="OnDashboardBindingsLoaded"
+                                        SelectionMode="None"
+                                        SizeChanged="OnDashboardBindingsSizeChanged"
+                                        Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.HasDefinedBusBindings), Mode=OneWay}">
+                                        <GridView.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <ItemsWrapGrid ItemWidth="280" ItemHeight="112" Orientation="Horizontal" />
+                                            </ItemsPanelTemplate>
+                                        </GridView.ItemsPanel>
+                                    </GridView>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </ScrollViewer>
+
+            <Grid x:Name="DiagnosticsSection" Grid.Row="1" Visibility="Collapsed">
+                <Grid x:Name="DiagnosticsContent" RowSpacing="16" SizeChanged="OnDiagnosticsContentSizeChanged">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="{Binding [Navigation.Dashboard], Source={StaticResource Strings}}" />
-
-                    <Grid
-                        x:Name="DashboardCardsGrid"
+                    <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="{Binding [Navigation.Diagnostics], Source={StaticResource Strings}}" />
+                    <Border
+                        x:Name="DiagnosticsSummaryCard"
                         Grid.Row="1"
-                        ColumnSpacing="16"
-                        RowSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition x:Name="DashboardStatusColumn" Width="*" />
-                            <ColumnDefinition x:Name="DashboardBindingsColumn" Width="1.3*" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <Grid RowSpacing="16">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="*" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-                            <Border
-                                MinHeight="96"
-                                Padding="16"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="{ThemeResource ControlCornerRadius}">
-                                <Grid ColumnSpacing="16">
+                        Padding="16"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                        <ScrollViewer
+                            AutomationProperties.AutomationId="DiagnosticsSummary"
+                            HorizontalScrollMode="Disabled"
+                            HorizontalScrollBarVisibility="Disabled"
+                            VerticalScrollBarVisibility="Auto">
+                            <StackPanel Spacing="16">
+                                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Diagnostics.LiveTitle], Source={StaticResource Strings}}" />
+                                <Grid ColumnSpacing="24" RowSpacing="16" SizeChanged="OnDiagnosticsSummarySizeChanged">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Dashboard.Voicemeeter], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE8D4;" />
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-                                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [Dashboard.Voicemeeter], Source={StaticResource Strings}}" />
-                                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind ViewModel.VoicemeeterStatus, Mode=OneWay}" />
-                                        <TextBlock Text="{x:Bind ViewModel.VoicemeeterDetail, Mode=OneWay}" TextWrapping="WrapWholeWords" />
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-                            <Border
-                                Grid.Row="1"
-                                MinHeight="96"
-                                Padding="16"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="{ThemeResource ControlCornerRadius}">
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Dashboard.WindowsAudio], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE995;" />
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-                                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [Dashboard.WindowsAudio], Source={StaticResource Strings}}" />
-                                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind ViewModel.WindowsAudioStatus, Mode=OneWay}" />
-                                        <TextBlock Text="{x:Bind ViewModel.WindowsAudioDetail, Mode=OneWay}" TextWrapping="WrapWholeWords" />
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-                        </Grid>
-
-                        <Grid
-                            x:Name="DashboardBindingsCardsGrid"
-                            Grid.Column="1"
-                            RowSpacing="16">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="*" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-                            <Border
-                                x:Name="DashboardStripBindingsCard"
-                                Padding="16"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="{ThemeResource ControlCornerRadius}">
-                                <Grid RowSpacing="12">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="*" />
-                                    </Grid.RowDefinitions>
-                                    <Grid ColumnSpacing="16">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Dashboard.Strip], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE8D6;" />
-                                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Dashboard.Strip], Source={StaticResource Strings}}" />
-                                    </Grid>
-                                    <StackPanel Grid.Row="1" Spacing="8">
-                                        <TextBlock
-                                            Style="{StaticResource CaptionTextBlockStyle}"
-                                            Text="{Binding [Dashboard.NoStripBindings], Source={StaticResource Strings}}"
-                                            Visibility="{x:Bind local:MainPage.InverseBoolToVisibility(ViewModel.HasDefinedStripBindings), Mode=OneWay}" />
-                                        <GridView
-                                            ItemContainerStyle="{StaticResource CompactGridViewItemStyle}"
-                                            ItemsSource="{x:Bind ViewModel.DefinedStripBindings, Mode=OneWay}"
-                                            SelectionMode="None"
-                                            Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.HasDefinedStripBindings), Mode=OneWay}">
-                                            <GridView.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <ItemsWrapGrid Orientation="Horizontal" />
-                                                </ItemsPanelTemplate>
-                                            </GridView.ItemsPanel>
-                                            <GridView.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border
-                                                        MinWidth="88"
-                                                        Margin="0,0,8,8"
-                                                        Padding="12,8"
-                                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="{ThemeResource ControlCornerRadius}">
-                                                        <TextBlock Text="{Binding}" />
-                                                    </Border>
-                                                </DataTemplate>
-                                            </GridView.ItemTemplate>
-                                        </GridView>
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-                            <Border
-                                x:Name="DashboardBusBindingsCard"
-                                Grid.Row="1"
-                                Padding="16"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="{ThemeResource ControlCornerRadius}">
-                                <Grid RowSpacing="12">
-                                    <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="*" />
                                     </Grid.RowDefinitions>
-                                    <Grid ColumnSpacing="16">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Dashboard.Bus], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE9D9;" />
-                                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Dashboard.Bus], Source={StaticResource Strings}}" />
-                                    </Grid>
-                                    <StackPanel Grid.Row="1" Spacing="8">
-                                        <TextBlock
-                                            Style="{StaticResource CaptionTextBlockStyle}"
-                                            Text="{Binding [Dashboard.NoBusBindings], Source={StaticResource Strings}}"
-                                            Visibility="{x:Bind local:MainPage.InverseBoolToVisibility(ViewModel.HasDefinedBusBindings), Mode=OneWay}" />
-                                        <GridView
-                                            ItemContainerStyle="{StaticResource CompactGridViewItemStyle}"
-                                            ItemsSource="{x:Bind ViewModel.DefinedBusBindings, Mode=OneWay}"
-                                            SelectionMode="None"
-                                            Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.HasDefinedBusBindings), Mode=OneWay}">
-                                            <GridView.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <ItemsWrapGrid Orientation="Horizontal" />
-                                                </ItemsPanelTemplate>
-                                            </GridView.ItemsPanel>
-                                            <GridView.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border
-                                                        MinWidth="88"
-                                                        Margin="0,0,8,8"
-                                                        Padding="12,8"
-                                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="{ThemeResource ControlCornerRadius}">
-                                                        <TextBlock Text="{Binding}" />
-                                                    </Border>
-                                                </DataTemplate>
-                                            </GridView.ItemTemplate>
-                                        </GridView>
+                                    <StackPanel x:Name="DiagnosticsVoicemeeterBlock" Spacing="4">
+                                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding [Diagnostics.VoicemeeterSession], Source={StaticResource Strings}}" />
+                                        <TextBlock AutomationProperties.AutomationId="DiagnosticsVoicemeeterSession" Text="{x:Bind ViewModel.VoicemeeterSessionText, Mode=OneWay}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel x:Name="DiagnosticsFailureBlock" Grid.Column="1" Spacing="4">
+                                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding [Diagnostics.CurrentFailure], Source={StaticResource Strings}}" />
+                                        <TextBlock AutomationProperties.AutomationId="DiagnosticsCurrentFailure" Text="{x:Bind ViewModel.CurrentFailureText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                                     </StackPanel>
                                 </Grid>
-                            </Border>
-                        </Grid>
-                    </Grid>
-
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
                     <Border
                         Grid.Row="2"
                         Padding="16"
@@ -422,23 +472,29 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
-                            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Dashboard.Diagnostics], Source={StaticResource Strings}}" />
+                            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Diagnostics.EventsTitle], Source={StaticResource Strings}}" />
                             <ListView
                                 Grid.Row="1"
-                                AutomationProperties.AutomationId="RecentEventsList"
-                                ItemsSource="{x:Bind ViewModel.RecentEvents, Mode=OneWay}"
+                                AutomationProperties.AutomationId="DiagnosticsList"
+                                ItemContainerStyle="{StaticResource StretchListViewItemStyle}"
+                                ItemsSource="{x:Bind ViewModel.Diagnostics, Mode=OneWay}"
                                 SelectionMode="None">
                                 <ListView.ItemTemplate>
                                     <DataTemplate>
-                                        <Grid Padding="0,8" ColumnSpacing="12">
+                                        <Grid Padding="0,8" ColumnSpacing="16">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="96" />
-                                                <ColumnDefinition Width="112" />
+                                                <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding TimeText}" />
-                                            <TextBlock Grid.Column="1" Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding Category}" />
-                                            <TextBlock Grid.Column="2" Text="{Binding Message}" TextWrapping="WrapWholeWords" />
+                                            <TextBlock
+                                                MinWidth="80"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{Binding TimeText}"
+                                                ToolTipService.ToolTip="{Binding DateTimeText}" />
+                                            <StackPanel Grid.Column="1" Spacing="4">
+                                                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{Binding Category}" TextWrapping="WrapWholeWords" />
+                                                <TextBlock Text="{Binding Message}" TextWrapping="WrapWholeWords" />
+                                            </StackPanel>
                                         </Grid>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
@@ -449,7 +505,7 @@
             </Grid>
 
             <Grid
-                x:Name="BindingsSection"
+                x:Name="BindingsSection" Grid.Row="1"
                 RowSpacing="16"
                 Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
@@ -545,7 +601,7 @@
             </Grid>
 
             <ScrollViewer
-                x:Name="SettingsSection"
+                x:Name="SettingsSection" Grid.Row="1" IsEnabled="{x:Bind ViewModel.CanEditSettings, Mode=OneWay}"
                 HorizontalScrollBarVisibility="Hidden"
                 HorizontalScrollMode="Disabled"
                 Visibility="Collapsed">
@@ -577,7 +633,7 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -596,13 +652,49 @@
                                         Style="{StaticResource BodyStrongTextBlockStyle}"
                                         Text="{x:Bind ViewModel.UpdateTitle, Mode=OneWay}" />
                                     <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind ViewModel.UpdateMessage, Mode=OneWay}" TextWrapping="WrapWholeWords" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind ViewModel.LastUpdateCheckText, Mode=OneWay}" TextWrapping="WrapWholeWords" />
                                 </StackPanel>
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="8">
+                                    <Button HorizontalAlignment="Stretch" MinWidth="160" AutomationProperties.AutomationId="BtnCheckUpdates" Command="{x:Bind ViewModel.CheckForUpdatesCommand}" Content="{Binding [Settings.Updates.CheckNow], Source={StaticResource Strings}}" />
                                 <HyperlinkButton
-                                    Grid.Column="2"
                                     AutomationProperties.AutomationId="BtnDownloadUpdate"
                                     Content="{Binding [Settings.Updates.Download], Source={StaticResource Strings}}"
                                     NavigateUri="{x:Bind ViewModel.LatestReleaseUri, Mode=OneWay}"
                                     Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.IsUpdateAvailable), Mode=OneWay}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border
+                            MinHeight="72"
+                            Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Width="24" VerticalAlignment="Center" FontFamily="{StaticResource SymbolThemeFontFamily}" FontSize="20" Glyph="&#xE72C;" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="{Binding [Settings.Updates.Automatic], Source={StaticResource Strings}}" TextWrapping="WrapWholeWords" />
+                                    <TextBlock
+                                        AutomationProperties.AutomationId="AutomaticUpdatesDescription"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{Binding [Settings.Updates.AutomaticDescription], Source={StaticResource Strings}}"
+                                        TextWrapping="WrapWholeWords" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12">
+                                    <TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.CheckUpdatesAutomatically), Mode=OneWay}" />
+                                    <ToggleSwitch
+                                        AutomationProperties.AutomationId="TglAutomaticUpdates"
+                                        AutomationProperties.Name="{Binding [Settings.Updates.Automatic], Source={StaticResource Strings}}"
+                                        AutomationProperties.HelpText="{Binding [Settings.Updates.AutomaticDescription], Source={StaticResource Strings}}"
+                                        IsOn="{x:Bind ViewModel.CheckUpdatesAutomatically, Mode=TwoWay}" />
+                                </StackPanel>
                             </Grid>
                         </Border>
 
@@ -615,7 +707,7 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -637,7 +729,7 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -659,7 +751,7 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -681,7 +773,7 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -709,7 +801,7 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -733,7 +825,7 @@
                                 <ComboBox
                                     Grid.Column="2"
                                     Width="240"
-                                    AutomationProperties.AutomationId="CmbLogoVariant"
+                                    AutomationProperties.AutomationId="CmbLogoVariant" AutomationProperties.Name="{Binding [Settings.Appearance.LogoTitle], Source={StaticResource Strings}}"
                                     DisplayMemberPath="DisplayName"
                                     HorizontalAlignment="Right"
                                     ItemsSource="{x:Bind ViewModel.LogoVariantOptions}"
@@ -749,7 +841,7 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -773,7 +865,7 @@
                                 <ComboBox
                                     Grid.Column="2"
                                     Width="240"
-                                    AutomationProperties.AutomationId="CmbLayoutMode"
+                                    AutomationProperties.AutomationId="CmbLayoutMode" AutomationProperties.Name="{Binding [Settings.Appearance.LayoutTitle], Source={StaticResource Strings}}"
                                     DisplayMemberPath="DisplayName"
                                     HorizontalAlignment="Right"
                                     ItemsSource="{x:Bind ViewModel.LayoutModeOptions}"
@@ -789,7 +881,7 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -803,7 +895,7 @@
                                 <ComboBox
                                     Grid.Column="2"
                                     Width="240"
-                                    AutomationProperties.AutomationId="CmbLanguage"
+                                    AutomationProperties.AutomationId="CmbLanguage" AutomationProperties.Name="{Binding [Settings.Appearance.LanguageTitle], Source={StaticResource Strings}}"
                                     DisplayMemberPath="DisplayName"
                                     HorizontalAlignment="Right"
                                     ItemsSource="{x:Bind ViewModel.Languages, Mode=OneWay}"
@@ -819,7 +911,7 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -832,7 +924,7 @@
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12">
                                     <TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.HideSupportPage), Mode=OneWay}" />
-                                    <ToggleSwitch AutomationProperties.AutomationId="TglHideSupport" IsOn="{x:Bind ViewModel.HideSupportPage, Mode=TwoWay}" />
+                                    <ToggleSwitch AutomationProperties.AutomationId="TglHideSupport" AutomationProperties.Name="{Binding [Settings.Appearance.HideSupportTitle], Source={StaticResource Strings}}" IsOn="{x:Bind ViewModel.HideSupportPage, Mode=TwoWay}" />
                                 </StackPanel>
                             </Grid>
                         </Border>
@@ -850,7 +942,7 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -878,7 +970,7 @@
                                     Orientation="Horizontal"
                                     Spacing="12">
                                     <TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.StartWithWindows), Mode=OneWay}" />
-                                    <ToggleSwitch AutomationProperties.AutomationId="TglStartWithWindows" IsOn="{x:Bind ViewModel.StartWithWindows, Mode=TwoWay}" />
+                                    <ToggleSwitch AutomationProperties.Name="{Binding [Settings.Startup.WindowsTitle], Source={StaticResource Strings}}" AutomationProperties.AutomationId="TglStartWithWindows" IsOn="{x:Bind ViewModel.StartWithWindows, Mode=TwoWay}" />
                                 </StackPanel>
                             </Grid>
                         </Border>
@@ -890,7 +982,7 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -918,7 +1010,7 @@
                                     Orientation="Horizontal"
                                     Spacing="12">
                                     <TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.CloseToTray), Mode=OneWay}" />
-                                    <ToggleSwitch AutomationProperties.AutomationId="TglCloseToTray" IsOn="{x:Bind ViewModel.CloseToTray, Mode=TwoWay}" />
+                                    <ToggleSwitch AutomationProperties.Name="{Binding [Settings.Startup.TrayTitle], Source={StaticResource Strings}}" AutomationProperties.AutomationId="TglCloseToTray" IsOn="{x:Bind ViewModel.CloseToTray, Mode=TwoWay}" />
                                 </StackPanel>
                             </Grid>
                         </Border>
@@ -930,7 +1022,7 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -958,7 +1050,7 @@
                                     Orientation="Horizontal"
                                     Spacing="12">
                                     <TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.SyncMute), Mode=OneWay}" />
-                                    <ToggleSwitch AutomationProperties.AutomationId="TglSyncMute" IsOn="{x:Bind ViewModel.SyncMute, Mode=TwoWay}" />
+                                    <ToggleSwitch AutomationProperties.Name="{Binding [Settings.Startup.MuteTitle], Source={StaticResource Strings}}" AutomationProperties.AutomationId="TglSyncMute" IsOn="{x:Bind ViewModel.SyncMute, Mode=TwoWay}" />
                                 </StackPanel>
                             </Grid>
                         </Border>
@@ -970,7 +1062,7 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -998,7 +1090,7 @@
                                     Orientation="Horizontal"
                                     Spacing="12">
                                     <TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.RememberVolume), Mode=OneWay}" />
-                                    <ToggleSwitch AutomationProperties.AutomationId="TglRememberVolume" IsOn="{x:Bind ViewModel.RememberVolume, Mode=TwoWay}" />
+                                    <ToggleSwitch AutomationProperties.Name="{Binding [Settings.Startup.VolumeTitle], Source={StaticResource Strings}}" AutomationProperties.AutomationId="TglRememberVolume" IsOn="{x:Bind ViewModel.RememberVolume, Mode=TwoWay}" />
                                 </StackPanel>
                             </Grid>
                         </Border>
@@ -1016,18 +1108,18 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Settings.Volume.LimitTitle], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE7BA;" />
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Settings.Mapping.LimitTitle], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE7BA;" />
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                                     <TextBlock Text="{Binding [Settings.Mapping.LimitTitle], Source={StaticResource Strings}}" />
                                     <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [Settings.Mapping.LimitDescription], Source={StaticResource Strings}}" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.LimitDbGainToZero), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglLimitDbGain" IsOn="{x:Bind ViewModel.LimitDbGainToZero, Mode=TwoWay}" /></StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.LimitDbGainToZero), Mode=OneWay}" /><ToggleSwitch AutomationProperties.Name="{Binding [Settings.Mapping.LimitTitle], Source={StaticResource Strings}}" AutomationProperties.AutomationId="TglLimitDbGain" IsOn="{x:Bind ViewModel.LimitDbGainToZero, Mode=TwoWay}" /></StackPanel>
                             </Grid>
                         </Border>
 
@@ -1038,45 +1130,45 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Settings.Volume.LinearTitle], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE9D2;" />
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Settings.Mapping.LinearTitle], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE9D2;" />
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                                     <TextBlock Text="{Binding [Settings.Mapping.LinearTitle], Source={StaticResource Strings}}" />
                                     <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [Settings.Mapping.LinearDescription], Source={StaticResource Strings}}" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.LinearVolumeScale), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglLinearScale" IsOn="{x:Bind ViewModel.LinearVolumeScale, Mode=TwoWay}" /></StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.LinearVolumeScale), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglLinearScale" AutomationProperties.Name="{Binding [Settings.Mapping.LinearTitle], Source={StaticResource Strings}}" IsOn="{x:Bind ViewModel.LinearVolumeScale, Mode=TwoWay}" /></StackPanel>
                             </Grid>
                         </Border>
 
                         <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Settings.Volume.MinimumTitle], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE738;" />
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Settings.Mapping.MinimumTitle], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE738;" />
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="{Binding [Settings.Mapping.MinimumTitle], Source={StaticResource Strings}}" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [Settings.Mapping.MinimumDescription], Source={StaticResource Strings}}" /></StackPanel>
-                                <NumberBox Grid.Column="2" Width="128" AutomationProperties.AutomationId="NumGainMin" HorizontalAlignment="Right" SmallChange="1" SpinButtonPlacementMode="Hidden" Value="{x:Bind ViewModel.GainMin, Mode=TwoWay}" />
+                                <NumberBox Grid.Column="2" Width="128" AutomationProperties.Name="{Binding [Settings.Mapping.MinimumTitle], Source={StaticResource Strings}}" AutomationProperties.AutomationId="NumGainMin" HorizontalAlignment="Right" SmallChange="1" SpinButtonPlacementMode="Hidden" Value="{x:Bind ViewModel.GainMin, Mode=TwoWay}" />
                             </Grid>
                         </Border>
 
                         <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Settings.Volume.MaximumTitle], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE74A;" />
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Settings.Mapping.MaximumTitle], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE74A;" />
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="{Binding [Settings.Mapping.MaximumTitle], Source={StaticResource Strings}}" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [Settings.Mapping.MaximumDescription], Source={StaticResource Strings}}" /></StackPanel>
-                                <NumberBox Grid.Column="2" Width="128" AutomationProperties.AutomationId="NumGainMax" HorizontalAlignment="Right" SmallChange="1" SpinButtonPlacementMode="Hidden" Value="{x:Bind ViewModel.GainMax, Mode=TwoWay}" />
+                                <NumberBox Grid.Column="2" Width="128" AutomationProperties.Name="{Binding [Settings.Mapping.MaximumTitle], Source={StaticResource Strings}}" AutomationProperties.AutomationId="NumGainMax" HorizontalAlignment="Right" SmallChange="1" SpinButtonPlacementMode="Hidden" Value="{x:Bind ViewModel.GainMax, Mode=TwoWay}" />
                             </Grid>
                         </Border>
 
                         <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Settings.Volume.PollingTitle], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE916;" />
+                                <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Settings.Mapping.PollingTitle], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE916;" />
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="{Binding [Settings.Mapping.PollingTitle], Source={StaticResource Strings}}" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [Settings.Mapping.PollingDescription], Source={StaticResource Strings}}" /></StackPanel>
-                                <NumberBox Grid.Column="2" Width="128" AutomationProperties.AutomationId="NumPollingRate" HorizontalAlignment="Right" Minimum="25" SmallChange="25" SpinButtonPlacementMode="Hidden" Value="{x:Bind ViewModel.PollingRate, Mode=TwoWay}" />
+                                <NumberBox Grid.Column="2" Width="128" AutomationProperties.Name="{Binding [Settings.Mapping.PollingTitle], Source={StaticResource Strings}}" AutomationProperties.AutomationId="NumPollingRate" HorizontalAlignment="Right" Minimum="25" SmallChange="25" SpinButtonPlacementMode="Hidden" Value="{x:Bind ViewModel.PollingRate, Mode=TwoWay}" />
                             </Grid>
                         </Border>
                     </StackPanel>
@@ -1087,45 +1179,45 @@
                         <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Settings.Advanced.Title], Source={StaticResource Strings}}" />
 
                         <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Settings.Advanced.SpikesTitle], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE83D;" />
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="{Binding [Settings.Advanced.SpikesTitle], Source={StaticResource Strings}}" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [Settings.Advanced.SpikesDescription], Source={StaticResource Strings}}" /></StackPanel>
-                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.PreventVolumeSpikes), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglPreventVolumeSpikes" IsOn="{x:Bind ViewModel.PreventVolumeSpikes, Mode=TwoWay}" /></StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.PreventVolumeSpikes), Mode=OneWay}" /><ToggleSwitch AutomationProperties.Name="{Binding [Settings.Advanced.SpikesTitle], Source={StaticResource Strings}}" AutomationProperties.AutomationId="TglPreventVolumeSpikes" IsOn="{x:Bind ViewModel.PreventVolumeSpikes, Mode=TwoWay}" /></StackPanel>
                             </Grid>
                         </Border>
 
                         <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Settings.Advanced.DeviceTitle], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE777;" />
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="{Binding [Settings.Advanced.DeviceTitle], Source={StaticResource Strings}}" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [Settings.Advanced.DeviceDescription], Source={StaticResource Strings}}" /></StackPanel>
-                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.RestartOnDeviceChange), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglRestartOnDeviceChange" IsOn="{x:Bind ViewModel.RestartOnDeviceChange, Mode=TwoWay}" /></StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.RestartOnDeviceChange), Mode=OneWay}" /><ToggleSwitch AutomationProperties.Name="{Binding [Settings.Advanced.DeviceTitle], Source={StaticResource Strings}}" AutomationProperties.AutomationId="TglRestartOnDeviceChange" IsOn="{x:Bind ViewModel.RestartOnDeviceChange, Mode=TwoWay}" /></StackPanel>
                             </Grid>
                         </Border>
 
                         <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Settings.Advanced.AnyDeviceTitle], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE8AB;" />
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="{Binding [Settings.Advanced.AnyDeviceTitle], Source={StaticResource Strings}}" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [Settings.Advanced.AnyDeviceDescription], Source={StaticResource Strings}}" /></StackPanel>
-                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.RestartOnAnyDeviceChange), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglRestartOnAnyDeviceChange" IsOn="{x:Bind ViewModel.RestartOnAnyDeviceChange, Mode=TwoWay}" /></StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.RestartOnAnyDeviceChange), Mode=OneWay}" /><ToggleSwitch AutomationProperties.Name="{Binding [Settings.Advanced.AnyDeviceTitle], Source={StaticResource Strings}}" AutomationProperties.AutomationId="TglRestartOnAnyDeviceChange" IsOn="{x:Bind ViewModel.RestartOnAnyDeviceChange, Mode=TwoWay}" /></StackPanel>
                             </Grid>
                         </Border>
 
                         <Border MinHeight="72" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <FontIcon Width="24" VerticalAlignment="Center" AutomationProperties.Name="{Binding [Settings.Advanced.ResumeTitle], Source={StaticResource Strings}}" FontFamily="Segoe Fluent Icons" FontSize="20" Glyph="&#xE895;" />
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="{Binding [Settings.Advanced.ResumeTitle], Source={StaticResource Strings}}" /><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{Binding [Settings.Advanced.ResumeDescription], Source={StaticResource Strings}}" /></StackPanel>
-                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.RestartOnResume), Mode=OneWay}" /><ToggleSwitch AutomationProperties.AutomationId="TglRestartOnResume" IsOn="{x:Bind ViewModel.RestartOnResume, Mode=TwoWay}" /></StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal" Spacing="12"><TextBlock VerticalAlignment="Center" Text="{x:Bind local:MainPage.OnOffText(ViewModel.RestartOnResume), Mode=OneWay}" /><ToggleSwitch AutomationProperties.Name="{Binding [Settings.Advanced.ResumeTitle], Source={StaticResource Strings}}" AutomationProperties.AutomationId="TglRestartOnResume" IsOn="{x:Bind ViewModel.RestartOnResume, Mode=TwoWay}" /></StackPanel>
                             </Grid>
                         </Border>
 
                         <TextBlock Margin="0,8,0,0" Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Navigation.About], Source={StaticResource Strings}}" />
 
                         <Border MinHeight="80" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <StackPanel VerticalAlignment="Center" Spacing="2">
                                     <StackPanel Orientation="Horizontal" Spacing="12">
@@ -1147,7 +1239,7 @@
                         </Border>
 
                         <Border MinHeight="80" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="16">
+                            <Grid ColumnSpacing="16" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <StackPanel VerticalAlignment="Center" Spacing="2">
                                     <TextBlock Text="{Binding [About.OriginalTitle], Source={StaticResource Strings}}" />
@@ -1170,7 +1262,7 @@
             </ScrollViewer>
 
             <ScrollViewer
-                x:Name="SupportSection"
+                x:Name="SupportSection" Grid.Row="1"
                 HorizontalScrollBarVisibility="Hidden"
                 HorizontalScrollMode="Disabled"
                 Visibility="Collapsed">
@@ -1185,7 +1277,7 @@
                     <StackPanel Grid.Row="1" Spacing="8">
                         <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Support.DonateTitle], Source={StaticResource Strings}}" />
                         <Border MinHeight="112" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="24">
+                            <Grid ColumnSpacing="24" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="294" /></Grid.ColumnDefinitions>
                                 <TextBlock VerticalAlignment="Center" Text="{Binding [Support.Message], Source={StaticResource Strings}}" TextWrapping="WrapWholeWords" />
                                 <HyperlinkButton
@@ -1205,7 +1297,7 @@
 
                         <TextBlock Margin="0,16,0,0" Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Support.StarTitle], Source={StaticResource Strings}}" />
                         <Border MinHeight="112" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="24">
+                            <Grid ColumnSpacing="24" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="294" /></Grid.ColumnDefinitions>
                                 <TextBlock VerticalAlignment="Center" Text="{Binding [Support.StarMessage], Source={StaticResource Strings}}" TextWrapping="WrapWholeWords" />
                                 <Button
@@ -1222,7 +1314,7 @@
 
                         <TextBlock Margin="0,16,0,0" Style="{StaticResource SubtitleTextBlockStyle}" Text="{Binding [Support.ShowcaseTitle], Source={StaticResource Strings}}" />
                         <Border MinHeight="144" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid ColumnSpacing="24">
+                            <Grid ColumnSpacing="24" SizeChanged="OnSettingRowSizeChanged">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="294" /></Grid.ColumnDefinitions>
                                 <TextBlock VerticalAlignment="Center" Text="{Binding [Support.ShowcaseMessage], Source={StaticResource Strings}}" TextWrapping="WrapWholeWords" />
                                 <Button

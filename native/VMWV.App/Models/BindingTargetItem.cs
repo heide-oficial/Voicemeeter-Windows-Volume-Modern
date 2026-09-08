@@ -24,8 +24,8 @@ public sealed partial class BindingTargetItem : ObservableObject
         IconGlyph = iconGlyph;
         IconName = iconName;
         IsAvailable = isAvailable;
-        _onChanged = onChanged;
         IsEnabled = isEnabled;
+        _onChanged = onChanged;
     }
 
     public string Id { get; }
@@ -43,6 +43,8 @@ public sealed partial class BindingTargetItem : ObservableObject
     public bool IsAvailable { get; }
 
     public string AutomationId => $"TglBinding{Id.Replace("_", string.Empty)}";
+
+    public override string ToString() => $"{Name}, {Detail}, {DeviceName}";
 
     [ObservableProperty]
     public partial bool IsEnabled { get; set; }

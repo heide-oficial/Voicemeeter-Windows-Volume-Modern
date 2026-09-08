@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("x64", "ARM64")]
+    [ValidateSet("x64")]
     [string]$Platform = "x64"
 )
 

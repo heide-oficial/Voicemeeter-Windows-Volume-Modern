@@ -4,7 +4,9 @@ The main application workflow links the default Windows output endpoint to selec
 
 ## Automatic connection
 
-After its audio monitor starts, the application attempts to connect to Voicemeeter automatically. If Voicemeeter is not available, it continues retrying at 10-second intervals while the application is running.
+The application starts Windows audio monitoring and attempts to connect to Voicemeeter automatically. If either service is not ready, it retries without requiring a manual reconnect. Consecutive failures increase the retry delay from one second to two, five, and then ten seconds.
+
+**Connected** is shown only after the Voicemeeter engine is ready and its edition has been identified. Having the process open is not enough on its own.
 
 After a successful connection, the application:
 
@@ -24,7 +26,7 @@ The **Control** group in [Settings](settings.md#control) contains the connection
 - **Show Voicemeeter** brings the Voicemeeter window to the foreground. The application first ensures that the client is connected.
 - **Restart Voicemeeter audio engine** requests an engine restart and then reapplies the current Windows audio state.
 
-After a manual disconnect, automatic connection attempts are paused until the user connects again or a lifecycle recovery resumes connection handling.
+After a manual disconnect, automatic connection attempts are paused until the user connects again or restarts the application. Refresh, device changes, and Windows resume do not undo that choice.
 
 ## Volume synchronization
 
@@ -36,7 +38,7 @@ The gain curve and limits are controlled by [Volume mapping](settings.md#volume-
 
 ## Mute synchronization
 
-When **Sync mute state** is enabled, Windows mute and unmute changes are sent to every enabled binding. Turning the option off leaves volume synchronization active but stops future mute updates.
+When **Sync mute state** is enabled, Windows mute and unmute changes are sent to every enabled binding. Enabling the option immediately sends the current mute state. Turning it off leaves volume synchronization active but stops future mute updates.
 
 ## Paused states
 
